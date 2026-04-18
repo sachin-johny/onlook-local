@@ -87,8 +87,31 @@ interface ProjectCreationProviderProps {
     totalSteps: number;
 }
 
+const withTimeout = async <T,>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string,
+): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(timeoutMessage));
+        }, timeoutMs);
+    });
+
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+};
+
 export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreationProviderProps) => {
     const router = useRouter();
+    const isLocalMode = process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
     const [currentStep, setCurrentStep] = useState(0);
     const [projectData, setProjectDataState] = useState<Partial<Project>>({
         name: '',
@@ -98,7 +121,7 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
     const [error, setError] = useState<string | null>(null);
     const [direction, setDirection] = useState(0);
     const [isFinalizing, setIsFinalizing] = useState(false);
-    const { data: user } = api.user.get.useQuery();
+    const { data: user, error: userError } = api.user.get.useQuery();
     const { mutateAsync: createProject } = api.project.create.useMutation();
     const { mutateAsync: forkSandbox } = api.sandbox.fork.useMutation();
     const { mutateAsync: startSandbox } = api.sandbox.start.useMutation();
@@ -111,11 +134,19 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
         try {
             setIsFinalizing(true);
 
-            if (!user?.id) {
-                console.error('No user found');
+            if (isLocalMode && userError) {
+                setError('Local database is unavailable. Start a local database on port 5432 and retry.');
+                return;
+            }
+
+            const userId = user?.id ?? (isLocalMode ? 'local-dev-user' : null);
+
+            if (!userId) {
+                setError('No user found. Please sign in and try again.');
                 return;
             }
             if (!projectData.files) {
+                setError('No project files found to import.');
                 return;
             }
 
@@ -124,22 +155,26 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
             );
 
             const template = SandboxTemplates[Templates.BLANK];
-            const forkedSandbox = await forkSandbox({
-                sandbox: {
-                    id: template.id,
-                    port: detectPortFromPackageJson(packageJsonFile),
-                },
-                config: {
-                    title: `Imported project - ${user.id}`,
-                    tags: ['imported', 'local', user.id],
-                },
-            });
+            const forkedSandbox = await withTimeout(
+                forkSandbox({
+                    sandbox: {
+                        id: template.id,
+                        port: detectPortFromPackageJson(packageJsonFile),
+                    },
+                    config: {
+                        title: `Imported project - ${userId}`,
+                        tags: ['imported', 'local', userId],
+                    },
+                }),
+                30000,
+                'Sandbox initialization timed out. Please retry.',
+            );
 
             const provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
                 providerOptions: {
                     codesandbox: {
                         sandboxId: forkedSandbox.sandboxId,
-                        userId: user.id,
+                        userId,
                         initClient: true,
                         keepActiveWhileConnected: false,
                         getSession: async (sandboxId) => {
@@ -153,24 +188,29 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
             await provider.setup({});
             await provider.destroy();
 
-            const project = await createProject({
-                project: {
-                    name: projectData.name ?? 'New project',
-                    description: 'Your new project',
-                },
-                sandboxId: forkedSandbox.sandboxId,
-                sandboxUrl: forkedSandbox.previewUrl,
-                userId: user.id,
-            });
+            const project = await withTimeout(
+                createProject({
+                    project: {
+                        name: projectData.name ?? 'New project',
+                        description: 'Your new project',
+                    },
+                    sandboxId: forkedSandbox.sandboxId,
+                    sandboxUrl: forkedSandbox.previewUrl,
+                    userId,
+                }),
+                30000,
+                'Project creation timed out. Please verify your local database is running.',
+            );
             if (!project) {
                 console.error('Failed to create project');
+                setError('Failed to create project.');
                 return;
             }
             // Open the project
             router.push(`${Routes.PROJECT}/${project.id}`);
         } catch (error) {
             console.error('Error creating project:', error);
-            setError('Failed to create project');
+            setError(error instanceof Error ? error.message : 'Failed to create project');
             return;
         } finally {
             setIsFinalizing(false);

@@ -26,10 +26,19 @@ const STARRED_TEMPLATES_KEY = 'onlook_starred_templates';
 export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: string } = {}) => {
     // Hooks
     const utils = api.useUtils();
-    const { data: user } = api.user.get.useQuery();
-    const { data: fetchedProjects, isLoading, refetch } = api.project.list.useQuery();
+    const isLocalMode = process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
+    const { data: user, error: userError, refetch: refetchUser } = api.user.get.useQuery();
+    const {
+        data: fetchedProjects,
+        isLoading,
+        error: projectListError,
+        refetch: refetchProjects,
+    } = api.project.list.useQuery();
+    const { error: subscriptionError, refetch: refetchSubscription } =
+        api.subscription.get.useQuery();
     const { mutateAsync: removeTag } = api.project.removeTag.useMutation();
     const { handleStartBlankProject, isCreatingProject } = useCreateBlankProject();
+    const backendError = userError ?? projectListError ?? subscriptionError;
 
     // Search and filters
     const [internalQuery] = useState('');
@@ -121,7 +130,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
 
             await Promise.all([utils.project.list.invalidate()]);
 
-            refetch();
+            refetchProjects();
         } catch (error) {
             toast.error('Failed to update template tag');
         }
@@ -204,6 +213,28 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
         };
     }, []);
 
+    const handleRetryQueries = () => {
+        void Promise.all([refetchUser(), refetchProjects(), refetchSubscription()]);
+    };
+
+    const backendErrorBanner = backendError ? (
+        <div className="border-amber-400/40 bg-amber-500/10 text-amber-100 mb-4 rounded-lg border p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                    <p className="text-sm font-medium">Backend is unavailable</p>
+                    <p className="text-xs text-amber-200/90">
+                        {isLocalMode
+                            ? 'Could not reach your local database. Start Postgres on port 5432 and try again.'
+                            : 'Could not load project data from the backend. Please retry.'}
+                    </p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={handleRetryQueries}>
+                    Retry
+                </Button>
+            </div>
+        </div>
+    ) : null;
+
     if (isLoading) {
         return (
             <div className="flex h-screen w-screen flex-col items-center justify-center">
@@ -217,24 +248,27 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
 
     if (projects.length === 0) {
         return (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-4">
-                <div className="text-foreground-secondary text-xl">No projects found</div>
-                <div className="text-md text-foreground-tertiary">
-                    Create a new project to get started
-                </div>
-                <div className="flex justify-center">
-                    <Button
-                        onClick={handleStartBlankProject}
-                        disabled={isCreatingProject}
-                        variant="default"
-                    >
-                        {isCreatingProject ? (
-                            <Icons.LoadingSpinner className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Icons.Plus className="h-4 w-4" />
-                        )}
-                        Create blank project
-                    </Button>
+            <div className="h-full w-full max-w-6xl px-6 py-8">
+                {backendErrorBanner}
+                <div className="flex h-full w-full flex-col items-center justify-center gap-4">
+                    <div className="text-foreground-secondary text-xl">No projects found</div>
+                    <div className="text-md text-foreground-tertiary">
+                        Create a new project to get started
+                    </div>
+                    <div className="flex justify-center">
+                        <Button
+                            onClick={handleStartBlankProject}
+                            disabled={isCreatingProject}
+                            variant="default"
+                        >
+                            {isCreatingProject ? (
+                                <Icons.LoadingSpinner className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <Icons.Plus className="h-4 w-4" />
+                            )}
+                            Create blank project
+                        </Button>
+                    </div>
                 </div>
             </div>
         );
@@ -251,6 +285,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
             }}
         >
             <div className="mx-auto w-full max-w-6xl overflow-x-visible">
+                {backendErrorBanner}
                 <div className="mb-12 overflow-x-visible">
                     <h2 className="text-foreground mb-[12px] text-2xl font-normal">
                         Recent projects
@@ -413,11 +448,10 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                                                             setFilesSortBy(option.value);
                                                             setIsSettingsDropdownOpen(false);
                                                         }}
-                                                        className={`hover:bg-secondary w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${
-                                                            filesSortBy === option.value
-                                                                ? 'text-foreground bg-secondary'
-                                                                : 'text-foreground-secondary'
-                                                        }`}
+                                                        className={`hover:bg-secondary w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${filesSortBy === option.value
+                                                            ? 'text-foreground bg-secondary'
+                                                            : 'text-foreground-secondary'
+                                                            }`}
                                                     >
                                                         {option.label}
                                                     </button>
@@ -435,11 +469,10 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                                                             setFilesOrderBy(option.value);
                                                             setIsSettingsDropdownOpen(false);
                                                         }}
-                                                        className={`hover:bg-secondary w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${
-                                                            filesOrderBy === option.value
-                                                                ? 'text-foreground bg-secondary'
-                                                                : 'text-foreground-secondary'
-                                                        }`}
+                                                        className={`hover:bg-secondary w-full rounded px-2 py-1.5 text-left text-sm transition-colors ${filesOrderBy === option.value
+                                                            ? 'text-foreground bg-secondary'
+                                                            : 'text-foreground-secondary'
+                                                            }`}
                                                     >
                                                         {option.label}
                                                     </button>
@@ -460,7 +493,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                                 <ProjectCard
                                     key={`files-${project.id}`}
                                     project={project}
-                                    refetch={refetch}
+                                    refetch={refetchProjects}
                                     aspectRatio={aspectRatio}
                                     searchQuery={debouncedSearchQuery}
                                     HighlightText={HighlightText}
@@ -476,7 +509,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                                 <ProjectCard
                                     key={`files-${project.id}`}
                                     project={project}
-                                    refetch={refetch}
+                                    refetch={refetchProjects}
                                     aspectRatio="aspect-[4/2.6]"
                                     searchQuery={debouncedSearchQuery}
                                     HighlightText={HighlightText}
@@ -498,17 +531,17 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                     image={
                         selectedTemplate.metadata?.previewImg?.url ||
                         (selectedTemplate.metadata?.previewImg?.storagePath?.bucket &&
-                        selectedTemplate.metadata.previewImg.storagePath.path
+                            selectedTemplate.metadata.previewImg.storagePath.path
                             ? getFileUrlFromStorage(
-                                  selectedTemplate.metadata.previewImg.storagePath.bucket,
-                                  selectedTemplate.metadata.previewImg.storagePath.path,
-                              )
+                                selectedTemplate.metadata.previewImg.storagePath.bucket,
+                                selectedTemplate.metadata.previewImg.storagePath.path,
+                            )
                             : selectedTemplate.metadata?.previewImg?.storagePath?.path
-                              ? getFileUrlFromStorage(
+                                ? getFileUrlFromStorage(
                                     STORAGE_BUCKETS.PREVIEW_IMAGES,
                                     selectedTemplate.metadata.previewImg.storagePath.path,
                                 )
-                              : null)
+                                : null)
                     }
                     isNew={false}
                     isStarred={selectedTemplate ? starredTemplates.has(selectedTemplate.id) : false}

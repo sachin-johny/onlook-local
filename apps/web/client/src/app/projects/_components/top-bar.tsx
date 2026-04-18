@@ -32,9 +32,32 @@ interface TopBarProps {
     onSearchChange?: (q: string) => void;
 }
 
+const withTimeout = async <T,>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string,
+): Promise<T> => {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(timeoutMessage));
+        }, timeoutMs);
+    });
+
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+};
+
 export const TopBar = ({ searchQuery, onSearchChange }: TopBarProps) => {
     const t = useTranslations();
     const router = useRouter();
+    const isLocalMode = process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [recentSearches, setRecentSearches] = useState<string[]>([]);
     const [recentColors, setRecentColors] = useState<string[]>([]);
@@ -43,7 +66,7 @@ export const TopBar = ({ searchQuery, onSearchChange }: TopBarProps) => {
     const searchContainerRef = useRef<HTMLDivElement>(null);
 
     // API hooks
-    const { data: user } = api.user.get.useQuery();
+    const { data: user, error: userError } = api.user.get.useQuery();
     const { mutateAsync: forkSandbox } = api.sandbox.fork.useMutation();
     const { mutateAsync: createProject } = api.project.create.useMutation();
     const { setIsAuthModalOpen } = useAuthContext();
@@ -114,7 +137,15 @@ export const TopBar = ({ searchQuery, onSearchChange }: TopBarProps) => {
     }, [onSearchChange]);
 
     const handleStartBlankProject = async () => {
-        if (!user?.id) {
+        if (isLocalMode && userError) {
+            toast.error('Local database is unavailable', {
+                description: 'Start a local database on port 5432 and try again.',
+            });
+            return;
+        }
+
+        const userId = user?.id ?? (isLocalMode ? 'local-dev-user' : null);
+        if (!userId) {
             // Store the return URL and open auth modal
             await localforage.setItem(LocalForageKeys.RETURN_URL, window.location.pathname);
             setIsAuthModalOpen(true);
@@ -124,24 +155,32 @@ export const TopBar = ({ searchQuery, onSearchChange }: TopBarProps) => {
         setIsCreatingProject(true);
         try {
             // Create a blank project using the BLANK template
-            const { sandboxId, previewUrl } = await forkSandbox({
-                sandbox: SandboxTemplates[Templates.EMPTY_NEXTJS],
-                config: {
-                    title: `Blank project - ${user.id}`,
-                    tags: ['blank', user.id],
-                },
-            });
+            const { sandboxId, previewUrl } = await withTimeout(
+                forkSandbox({
+                    sandbox: SandboxTemplates[Templates.EMPTY_NEXTJS],
+                    config: {
+                        title: `Blank project - ${userId}`,
+                        tags: ['blank', userId],
+                    },
+                }),
+                30000,
+                'Sandbox creation timed out. Please try again.',
+            );
 
-            const newProject = await createProject({
-                project: {
-                    name: 'New Project',
-                    description: 'Your new blank project',
-                    tags: ['blank'],
-                },
-                sandboxId,
-                sandboxUrl: previewUrl,
-                userId: user.id,
-            });
+            const newProject = await withTimeout(
+                createProject({
+                    project: {
+                        name: 'New Project',
+                        description: 'Your new blank project',
+                        tags: ['blank'],
+                    },
+                    sandboxId,
+                    sandboxUrl: previewUrl,
+                    userId,
+                }),
+                30000,
+                'Project creation timed out. Please verify your local database is running.',
+            );
 
             if (newProject) {
                 router.push(`${Routes.PROJECT}/${newProject.id}`);

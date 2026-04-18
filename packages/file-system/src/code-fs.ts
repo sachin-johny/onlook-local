@@ -241,6 +241,13 @@ export class CodeFileSystem extends FileSystem {
 
     private async undobounceSaveIndexToFile(): Promise<void> {
         try {
+            await this.initialize();
+        } catch {
+            console.warn('[CodeEditorApi] Failed to initialize file system before persisting index');
+            return;
+        }
+
+        try {
             await this.createDirectory(ONLOOK_CACHE_DIRECTORY);
         } catch {
             console.warn(`[CodeEditorApi] Failed to create ${ONLOOK_CACHE_DIRECTORY} directory`);

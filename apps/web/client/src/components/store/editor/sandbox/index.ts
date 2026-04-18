@@ -88,6 +88,28 @@ export class SandboxManager {
         await this.fs.rebuildIndex();
     }
 
+    private async getRouterConfigWithRetry(maxAttempts = 6, delayMs = 500): Promise<RouterConfig | null> {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const config = await this.getRouterConfig();
+                if (config) {
+                    return config;
+                }
+            } catch (error) {
+                if (attempt === maxAttempts) {
+                    console.warn('[SandboxManager] Router config detection failed after retries:', error);
+                    return null;
+                }
+            }
+
+            if (attempt < maxAttempts) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+        }
+
+        return null;
+    }
+
     private async ensurePreloadScriptExists(): Promise<void> {
         try {
             if (this.preloadScriptState !== PreloadScriptState.NOT_INJECTED
@@ -101,9 +123,11 @@ export class SandboxManager {
                 throw new Error('No provider available for preload script injection');
             }
 
-            const routerConfig = await this.getRouterConfig();
+            const routerConfig = await this.getRouterConfigWithRetry();
             if (!routerConfig) {
-                throw new Error('No router config found for preload script injection');
+                console.warn('[SandboxManager] No router config found for preload script injection. Skipping preload injection for now.');
+                this.preloadScriptState = PreloadScriptState.NOT_INJECTED;
+                return;
             }
 
             await copyPreloadScriptToPublic(this.session.provider, routerConfig);

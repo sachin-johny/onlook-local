@@ -24,29 +24,30 @@ export type IFrameView = HTMLIFrameElement & {
     isLoading: () => boolean;
 } & PromisifiedPendpalChildMethods;
 
-// Creates a proxy that provides safe fallback methods for any property access
-const createSafeFallbackMethods = (): PromisifiedPendpalChildMethods => {
-    return new Proxy({} as PromisifiedPendpalChildMethods, {
-        get(_target, prop: string | symbol) {
+const getSafeFallbackForMethod = async (method: string) => {
+    if (method.startsWith('get') || method.includes('capture') || method.includes('build')) {
+        return null;
+    }
+    if (method.includes('Count')) {
+        return 0;
+    }
+    if (method.includes('Editable') || method.includes('supports')) {
+        return false;
+    }
+    return undefined;
+};
+
+const createSafeFrameView = <T extends object>(base: T): T & PromisifiedPendpalChildMethods => {
+    return new Proxy(base as T & PromisifiedPendpalChildMethods, {
+        get(target, prop: string | symbol) {
             if (typeof prop === 'symbol') return undefined;
 
-            return async (..._args: any[]) => {
-                const method = String(prop);
-                if (
-                    method.startsWith('get') ||
-                    method.includes('capture') ||
-                    method.includes('build')
-                ) {
-                    return null;
-                }
-                if (method.includes('Count')) {
-                    return 0;
-                }
-                if (method.includes('Editable') || method.includes('supports')) {
-                    return false;
-                }
-                return undefined;
-            };
+            const existing = Reflect.get(target, prop);
+            if (existing !== undefined) {
+                return existing;
+            }
+
+            return async () => getSafeFallbackForMethod(String(prop));
         },
     });
 };
@@ -68,7 +69,7 @@ export const FrameComponent = observer(
                 reloadIframe,
                 onConnectionFailed,
                 onConnectionSuccess,
-                penpalTimeoutMs = 5000,
+                penpalTimeoutMs = 10000,
                 isInDragSelection = false,
                 ...restProps
             },
@@ -170,10 +171,18 @@ export const FrameComponent = observer(
                         })
                         .catch((error) => {
                             isConnecting.current = false;
-                            console.error(
-                                `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Failed to setup penpal connection:`,
-                                error,
-                            );
+                            const message = error instanceof Error ? error.message : String(error);
+                            if (message.includes('timeout')) {
+                                console.warn(
+                                    `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Failed to setup penpal connection:`,
+                                    error,
+                                );
+                            } else {
+                                console.error(
+                                    `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Failed to setup penpal connection:`,
+                                    error,
+                                );
+                            }
                             onConnectionFailed();
                         });
                 } catch (error) {
@@ -201,7 +210,7 @@ export const FrameComponent = observer(
 
             const remoteMethods = useMemo((): PromisifiedPendpalChildMethods => {
                 if (!penpalChild) {
-                    return createSafeFallbackMethods();
+                    return {} as PromisifiedPendpalChildMethods;
                 }
 
                 return {
@@ -255,16 +264,14 @@ export const FrameComponent = observer(
                     console.error(`${PENPAL_PARENT_CHANNEL} (${frame.id}) - Iframe - Not found`);
                     // Return safe fallback with no-op methods and safe defaults
                     const fallbackElement = document.createElement('iframe');
-                    const safeFallback: IFrameView = Object.assign(fallbackElement, {
+                    const safeFallback = Object.assign(fallbackElement, {
                         // Custom sync methods with safe no-op implementations
                         supportsOpenDevTools: () => false,
                         setZoomLevel: () => { },
                         reload: () => { },
                         isLoading: () => false,
-                        // Reuse the safe fallback methods from remoteMethods
-                        ...remoteMethods,
                     });
-                    return safeFallback;
+                    return createSafeFrameView(safeFallback) as IFrameView;
                 }
 
                 // Register the iframe with the editor engine
@@ -286,7 +293,7 @@ export const FrameComponent = observer(
                     console.warn(
                         `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Failed to setup penpal connection: iframeRemote is null`,
                     );
-                    return Object.assign(iframe, syncMethods, remoteMethods) as IFrameView;
+                    return createSafeFrameView(Object.assign(iframe, syncMethods)) as IFrameView;
                 }
 
                 return Object.assign(iframe, {

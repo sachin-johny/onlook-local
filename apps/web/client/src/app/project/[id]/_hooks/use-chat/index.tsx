@@ -3,6 +3,7 @@
 import { useEditorEngine } from '@/components/store/editor';
 import { handleToolCall } from '@/components/tools';
 import { api } from '@/trpc/client';
+import { env } from '@/env';
 import { useChat as useAiChat } from '@ai-sdk/react';
 import { ChatType, type ChatMessage, type GitMessageCheckpoint, type MessageContext, type QueuedMessage } from '@onlook/models';
 import { jsonClone } from '@onlook/utility';
@@ -12,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import {
     createCheckpointsForAllBranches,
+    getLocalAssistantMessage,
     getUserChatMessageFromString
 } from './utils';
 
@@ -36,6 +38,7 @@ interface UseChatProps {
 export function useChat({ conversationId, projectId, initialMessages }: UseChatProps) {
     const editorEngine = useEditorEngine();
     const posthog = usePostHog();
+    const isLocalMode = env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE;
 
     const [finishReason, setFinishReason] = useState<FinishReason | null>(null);
     const [isExecutingToolCall, setIsExecutingToolCall] = useState(false);
@@ -82,6 +85,15 @@ export function useChat({ conversationId, projectId, initialMessages }: UseChatP
         async (content: string, type: ChatType, context?: MessageContext[]) => {
             const messageContext = context || await editorEngine.chat.context.getContextByChatType(type);
             const newMessage = getUserChatMessageFromString(content, messageContext, conversationId);
+
+            if (isLocalMode) {
+                const assistantMessage = getLocalAssistantMessage(conversationId);
+                setMessages(jsonClone([...messagesRef.current, newMessage, assistantMessage]));
+                setFinishReason('stop');
+                void editorEngine.chat.conversation.generateTitle(content);
+                return newMessage;
+            }
+
             setMessages(jsonClone([...messagesRef.current, newMessage]));
 
             void regenerate({
@@ -98,8 +110,10 @@ export function useChat({ conversationId, projectId, initialMessages }: UseChatP
             editorEngine.chat.context,
             messagesRef,
             setMessages,
+            isLocalMode,
             regenerate,
             conversationId,
+            editorEngine.chat.conversation,
         ],
     );
 
@@ -157,6 +171,13 @@ export function useChat({ conversationId, projectId, initialMessages }: UseChatP
             };
             message.parts = [{ type: 'text', text: newContent }];
 
+            if (isLocalMode) {
+                const assistantMessage = getLocalAssistantMessage(conversationId);
+                setMessages(jsonClone([...updatedMessages, message, assistantMessage]));
+                setFinishReason('stop');
+                return message;
+            }
+
             setMessages(jsonClone([...updatedMessages, message]));
 
             void regenerate({
@@ -171,6 +192,7 @@ export function useChat({ conversationId, projectId, initialMessages }: UseChatP
         [
             editorEngine.chat.context,
             regenerate,
+            isLocalMode,
             conversationId,
             setMessages,
         ],

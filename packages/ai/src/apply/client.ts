@@ -62,10 +62,10 @@ export async function applyCodeChangeWithRelace(
         instructions: instruction,
         relaceMetadata: metadata
             ? {
-                  onlookUserId: metadata.userId,
-                  onlookProjectId: metadata.projectId,
-                  onlookConversationId: metadata.conversationId,
-              }
+                onlookUserId: metadata.userId,
+                onlookProjectId: metadata.projectId,
+                onlookConversationId: metadata.conversationId,
+            }
             : undefined,
     };
 
@@ -88,6 +88,14 @@ export async function applyCodeChange(
     metadata?: ApplyCodeChangeMetadata,
     preferredProvider: FastApplyProvider = FastApplyProvider.MORPH,
 ): Promise<string | null> {
+    const isLocalMode =
+        process.env.ONLOOK_LOCAL_MODE === 'true' ||
+        process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
+
+    if (isLocalMode) {
+        return originalCode;
+    }
+
     const providerAttempts = [
         {
             provider: preferredProvider,
@@ -114,22 +122,22 @@ export async function applyCodeChange(
             const result =
                 provider === FastApplyProvider.MORPH
                     ? await (applyFn as typeof applyCodeChangeWithMorph)(
-                          originalCode,
-                          updateSnippet,
-                          instruction,
-                      )
+                        originalCode,
+                        updateSnippet,
+                        instruction,
+                    )
                     : await (applyFn as typeof applyCodeChangeWithRelace)(
-                          originalCode,
-                          updateSnippet,
-                          instruction,
-                          metadata,
-                      );
+                        originalCode,
+                        updateSnippet,
+                        instruction,
+                        metadata,
+                    );
             if (result) return result;
         } catch (error) {
             console.warn(`Code application failed with provider ${provider}:`, error);
-            throw error;
+            continue;
         }
     }
 
-    return null;
+    return originalCode;
 }

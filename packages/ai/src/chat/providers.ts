@@ -46,9 +46,16 @@ export function initModel({
 }
 
 function getOpenRouterProvider(model: OPENROUTER_MODELS): LanguageModel {
-    if (!process.env.OPENROUTER_API_KEY) {
+    const isLocalMode =
+        process.env.ONLOOK_LOCAL_MODE === 'true' ||
+        process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
+
+    if (!process.env.OPENROUTER_API_KEY && !isLocalMode) {
         throw new Error('OPENROUTER_API_KEY must be set');
     }
-    const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+
+    const openrouter = createOpenRouter({
+        apiKey: process.env.OPENROUTER_API_KEY ?? 'local-openrouter-stub',
+    });
     return openrouter(model);
 }

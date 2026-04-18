@@ -10,6 +10,21 @@ export interface CreateClientOptions {
     providerOptions: ProviderInstanceOptions;
 }
 
+function isLocalModeEnabled() {
+    return (
+        process.env.ONLOOK_LOCAL_MODE === 'true' ||
+        process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true'
+    );
+}
+
+function resolveCodeProvider(codeProvider: CodeProvider): CodeProvider {
+    if (isLocalModeEnabled() && codeProvider === CodeProvider.CodeSandbox) {
+        return CodeProvider.NodeFs;
+    }
+
+    return codeProvider;
+}
+
 /**
  * Providers are designed to be singletons; be mindful of this when creating multiple clients
  * or when instantiating in the backend (stateless vs stateful).
@@ -18,7 +33,7 @@ export async function createCodeProviderClient(
     codeProvider: CodeProvider,
     { providerOptions }: CreateClientOptions,
 ) {
-    const provider = newProviderInstance(codeProvider, providerOptions);
+    const provider = newProviderInstance(resolveCodeProvider(codeProvider), providerOptions);
     await provider.initialize({});
     return provider;
 }
@@ -26,14 +41,16 @@ export async function createCodeProviderClient(
 export async function getStaticCodeProvider(
     codeProvider: CodeProvider,
 ): Promise<typeof CodesandboxProvider | typeof NodeFsProvider> {
-    if (codeProvider === CodeProvider.CodeSandbox) {
+    const resolvedProvider = resolveCodeProvider(codeProvider);
+
+    if (resolvedProvider === CodeProvider.CodeSandbox) {
         return CodesandboxProvider;
     }
 
-    if (codeProvider === CodeProvider.NodeFs) {
+    if (resolvedProvider === CodeProvider.NodeFs) {
         return NodeFsProvider;
     }
-    throw new Error(`Unimplemented code provider: ${codeProvider}`);
+    throw new Error(`Unimplemented code provider: ${resolvedProvider}`);
 }
 
 export interface ProviderInstanceOptions {
@@ -50,10 +67,7 @@ function newProviderInstance(codeProvider: CodeProvider, providerOptions: Provid
     }
 
     if (codeProvider === CodeProvider.NodeFs) {
-        if (!providerOptions.nodefs) {
-            throw new Error('NodeFs provider options are required.');
-        }
-        return new NodeFsProvider(providerOptions.nodefs);
+        return new NodeFsProvider(providerOptions.nodefs ?? {});
     }
 
     throw new Error(`Unimplemented code provider: ${codeProvider}`);

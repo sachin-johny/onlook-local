@@ -18,31 +18,55 @@ export const suggestionsRouter = createTRPCRouter({
             })),
         }))
         .mutation(async ({ ctx, input }) => {
-            const { model, headers } = initModel({
-                provider: LLMProvider.OPENROUTER,
-                model: OPENROUTER_MODELS.OPEN_AI_GPT_5_NANO,
-            });
-            const { object } = await generateObject({
-                model,
-                headers,
-                schema: ChatSuggestionsSchema,
-                messages: [
+            let suggestions: ChatSuggestion[];
+
+            try {
+                const { model, headers } = initModel({
+                    provider: LLMProvider.OPENROUTER,
+                    model: OPENROUTER_MODELS.OPEN_AI_GPT_5_NANO,
+                });
+                const { object } = await generateObject({
+                    model,
+                    headers,
+                    schema: ChatSuggestionsSchema,
+                    messages: [
+                        {
+                            role: 'system',
+                            content: SUGGESTION_SYSTEM_PROMPT,
+                        },
+                        ...convertToModelMessages(
+                            input.messages.map((m) => ({
+                                role: m.role,
+                                parts: [{ type: 'text', text: m.content }],
+                            })),
+                        ),
+                        {
+                            role: 'user',
+                            content:
+                                'Based on our conversation, what should I work on next to improve this page? Provide 3 specific, actionable suggestions. These should be realistic and achievable. Return the suggestions as a JSON object. DO NOT include any other text.',
+                        },
+                    ],
+                    maxOutputTokens: 10000,
+                });
+                suggestions = object.suggestions satisfies ChatSuggestion[];
+            } catch (error) {
+                console.error('Error generating suggestions:', error);
+                suggestions = [
                     {
-                        role: 'system',
-                        content: SUGGESTION_SYSTEM_PROMPT,
+                        title: 'Review Layout Structure',
+                        prompt: 'Audit the current page structure and identify one section to simplify or reorganize for better readability.',
                     },
-                    ...convertToModelMessages(input.messages.map((m) => ({
-                        role: m.role,
-                        parts: [{ type: 'text', text: m.content }],
-                    }))),
                     {
-                        role: 'user',
-                        content: 'Based on our conversation, what should I work on next to improve this page? Provide 3 specific, actionable suggestions. These should be realistic and achievable. Return the suggestions as a JSON object. DO NOT include any other text.',
+                        title: 'Improve Primary Action',
+                        prompt: 'Refine the primary call-to-action so users can understand the next step within 3 seconds of landing on the page.',
                     },
-                ],
-                maxOutputTokens: 10000,
-            });
-            const suggestions = object.suggestions satisfies ChatSuggestion[];
+                    {
+                        title: 'Polish Visual Hierarchy',
+                        prompt: 'Adjust typography, spacing, and contrast in one area to make the most important content stand out more clearly.',
+                    },
+                ];
+            }
+
             try {
                 await ctx.db.update(conversations).set({
                     suggestions,

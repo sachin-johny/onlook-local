@@ -33,6 +33,26 @@ export const getUserChatMessageFromString = (
     }
 }
 
+export const getLocalAssistantMessage = (conversationId: string): ChatMessage => {
+    return {
+        id: uuidv4(),
+        role: 'assistant',
+        parts: [
+            {
+                type: 'text',
+                text: 'Local mode is enabled. External LLM providers are disabled, so this is a placeholder response.',
+            },
+        ],
+        metadata: {
+            context: [],
+            checkpoints: [],
+            createdAt: new Date(),
+            conversationId,
+            finishReason: 'stop',
+        },
+    };
+};
+
 export async function createCheckpointsForAllBranches(
     editorEngine: EditorEngine,
     commitMessage: string,

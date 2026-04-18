@@ -29,20 +29,37 @@ import { ZodError } from 'zod';
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+    const localMode =
+        process.env.ONLOOK_LOCAL_MODE === 'true' ||
+        process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
+
     const supabase = await createClient();
     const {
         data: { user },
         error,
     } = await supabase.auth.getUser();
 
-    if (error) {
+    if (error && !localMode) {
         throw new TRPCError({ code: 'UNAUTHORIZED', message: error.message });
     }
+
+    const contextUser =
+        user ??
+        (localMode
+            ? ({
+                id: 'local-dev-user',
+                email: 'dev@local.dev',
+                user_metadata: {
+                    name: 'Local Dev User',
+                    avatar_url: '',
+                },
+            } as unknown as User)
+            : null);
 
     return {
         db,
         supabase,
-        user,
+        user: contextUser,
         ...opts,
     };
 };

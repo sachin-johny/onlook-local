@@ -2,7 +2,84 @@ import { env } from '@/env';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
+type ServerSupabaseClient = ReturnType<typeof createServerClient>;
+
+function createLocalClient(): ServerSupabaseClient {
+    const localUser = {
+        id: 'local-dev-user',
+        email: 'dev@local.dev',
+        user_metadata: {
+            name: 'Local Dev User',
+            avatar_url: '',
+        },
+    };
+
+    const localSession = {
+        access_token: 'local-dev-token',
+        refresh_token: 'local-dev-refresh-token',
+        expires_in: 3600,
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        token_type: 'bearer',
+        user: localUser,
+    };
+
+    return {
+        auth: {
+            getSession: async () => ({
+                data: { session: localSession },
+                error: null,
+            }),
+            getUser: async () => ({
+                data: { user: localUser },
+                error: null,
+            }),
+            signOut: async () => ({
+                error: null,
+            }),
+            signInWithPassword: async () => ({
+                data: {
+                    user: localUser,
+                    session: localSession,
+                },
+                error: null,
+            }),
+            signInWithOAuth: async () => ({
+                data: {
+                    provider: null,
+                    url: `${env.NEXT_PUBLIC_SITE_URL}/auth/callback?code=local-dev-code`,
+                },
+                error: null,
+            }),
+            exchangeCodeForSession: async () => ({
+                data: {
+                    session: localSession,
+                    user: localUser,
+                },
+                error: null,
+            }),
+            onAuthStateChange: () => ({
+                data: {
+                    subscription: {
+                        unsubscribe: () => { },
+                    },
+                },
+            }),
+        },
+        storage: {
+            from: () => ({
+                upload: async () => ({ data: { path: '' }, error: null }),
+                getPublicUrl: () => ({ data: { publicUrl: '' } }),
+                info: async () => ({ data: null, error: null }),
+            }),
+        },
+    } as unknown as ServerSupabaseClient;
+}
+
 export async function createClient() {
+    if (env.ONLOOK_LOCAL_MODE) {
+        return createLocalClient();
+    }
+
     const cookieStore = await cookies();
 
     // Create a server's supabase client with newly configured cookie,

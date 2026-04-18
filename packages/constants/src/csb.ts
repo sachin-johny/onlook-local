@@ -20,5 +20,13 @@ export const CSB_PREVIEW_TASK_NAME = 'dev';
 export const CSB_DOMAIN = 'csb.app';
 
 export function getSandboxPreviewUrl(sandboxId: string, port: number) {
+    const localMode =
+        process.env.ONLOOK_LOCAL_MODE === 'true' ||
+        process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
+
+    if (localMode) {
+        return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+    }
+
     return `https://${sandboxId}-${port}.${CSB_DOMAIN}`;
 }

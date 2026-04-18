@@ -50,8 +50,9 @@ import {
     type WriteFileInput,
     type WriteFileOutput,
 } from '../../types';
+import { randomUUID } from 'node:crypto';
 
-export interface NodeFsProviderOptions {}
+export interface NodeFsProviderOptions { }
 
 export class NodeFsProvider extends Provider {
     private readonly options: NodeFsProviderOptions;
@@ -179,7 +180,7 @@ export class NodeFsProvider extends Provider {
 
     static async createProject(input: CreateProjectInput): Promise<CreateProjectOutput> {
         return {
-            id: input.id,
+            id: `local-${randomUUID()}`,
         };
     }
 
@@ -187,7 +188,9 @@ export class NodeFsProvider extends Provider {
         repoUrl: string;
         branch: string;
     }): Promise<CreateProjectOutput> {
-        throw new Error('createProjectFromGit not implemented for NodeFs provider');
+        return {
+            id: `local-git-${randomUUID()}`,
+        };
     }
 
     async pauseProject(input: PauseProjectInput): Promise<PauseProjectOutput> {
@@ -247,7 +250,7 @@ export class NodeFsTerminal extends ProviderTerminal {
     }
 
     onOutput(callback: (data: string) => void): () => void {
-        return () => {};
+        return () => { };
     }
 }
 
@@ -281,7 +284,7 @@ export class NodeFsTask extends ProviderTask {
     }
 
     onOutput(callback: (data: string) => void): () => void {
-        return () => {};
+        return () => { };
     }
 }
 
@@ -307,6 +310,6 @@ export class NodeFsCommand extends ProviderBackgroundCommand {
     }
 
     onOutput(callback: (data: string) => void): () => void {
-        return () => {};
+        return () => { };
     }
 }

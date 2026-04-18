@@ -8,8 +8,20 @@ import type {
 
 export class FreestyleAdapter implements HostingProviderAdapter {
     async deploy(request: DeploymentRequest): Promise<DeploymentResponse> {
+        const localMode =
+            process.env.ONLOOK_LOCAL_MODE === 'true' ||
+            process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
+
+        if (localMode) {
+            return {
+                deploymentId: 'local-disabled',
+                success: false,
+                message: 'Deploy is disabled in local mode',
+            };
+        }
+
         const sdk = initializeFreestyleSdk();
-        
+
         const res = await sdk.deployWeb(
             {
                 files: request.files,
@@ -17,7 +29,7 @@ export class FreestyleAdapter implements HostingProviderAdapter {
             },
             request.config
         );
-        
+
         const freestyleResponse = res as {
             message?: string;
             error?: {
@@ -25,15 +37,15 @@ export class FreestyleAdapter implements HostingProviderAdapter {
             };
             data?: FreestyleDeployWebSuccessResponseV2;
         };
-        
+
         if (freestyleResponse.error) {
             throw new Error(
-                freestyleResponse.error.message || 
-                freestyleResponse.message || 
+                freestyleResponse.error.message ||
+                freestyleResponse.message ||
                 'Unknown error'
             );
         }
-        
+
         return {
             deploymentId: freestyleResponse.data?.deploymentId ?? '',
             success: true

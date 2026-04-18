@@ -17,8 +17,13 @@ function isLocalModeEnabled() {
     );
 }
 
+function hasUsableCodesandboxKey() {
+    const key = process.env.CSB_API_KEY?.trim();
+    return !!key && !key.startsWith('local-');
+}
+
 function resolveCodeProvider(codeProvider: CodeProvider): CodeProvider {
-    if (isLocalModeEnabled() && codeProvider === CodeProvider.CodeSandbox) {
+    if (isLocalModeEnabled() && codeProvider === CodeProvider.CodeSandbox && !hasUsableCodesandboxKey()) {
         return CodeProvider.NodeFs;
     }
 

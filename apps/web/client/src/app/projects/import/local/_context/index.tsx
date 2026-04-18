@@ -14,6 +14,7 @@ import type { NextJsProjectValidation, ProcessedFile } from '@/app/projects/type
 import { ProcessedFileType } from '@/app/projects/types';
 import { api } from '@/trpc/react';
 import { Routes } from '@/utils/constants';
+import { LOCAL_DEV_USER_ID } from '@/utils/local-mode';
 
 export interface Project {
     name: string;
@@ -135,11 +136,11 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
             setIsFinalizing(true);
 
             if (isLocalMode && userError) {
-                setError('Local database is unavailable. Start a local database on port 5432 and retry.');
+                setError('Local database is unavailable. Start your local backend database and retry.');
                 return;
             }
 
-            const userId = user?.id ?? (isLocalMode ? 'local-dev-user' : null);
+            const userId = user?.id ?? (isLocalMode ? LOCAL_DEV_USER_ID : null);
 
             if (!userId) {
                 setError('No user found. Please sign in and try again.');

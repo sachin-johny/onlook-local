@@ -1,15 +1,17 @@
 import { env } from '@/env';
+import { LOCAL_DEV_USER_EMAIL, LOCAL_DEV_USER_ID, LOCAL_DEV_USER_NAME } from '@/utils/local-mode';
 import { createBrowserClient } from '@supabase/ssr';
 
 type BrowserSupabaseClient = ReturnType<typeof createBrowserClient>;
 
 function createLocalClient(): BrowserSupabaseClient {
     const localUser = {
-        id: 'local-dev-user',
-        email: 'dev@local.dev',
+        id: LOCAL_DEV_USER_ID,
+        email: LOCAL_DEV_USER_EMAIL,
         user_metadata: {
-            name: 'Local Dev User',
+            name: LOCAL_DEV_USER_NAME,
             avatar_url: '',
+            avatarUrl: '',
         },
     };
 

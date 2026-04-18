@@ -8,13 +8,43 @@
  */
 
 import { createAdminClient } from '@/utils/supabase/admin';
+import { LOCAL_DEV_USER_EMAIL, LOCAL_DEV_USER_ID, LOCAL_DEV_USER_NAME } from '@/utils/local-mode';
 import { createClient } from '@/utils/supabase/server';
+import { authUsers, users } from '@onlook/db';
 import { db } from '@onlook/db/src/client';
 import type { User } from '@supabase/supabase-js';
 import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { SetRequiredDeep } from 'type-fest';
 import { ZodError } from 'zod';
+
+const ensureLocalDevUserRecords = async () => {
+    await db
+        .insert(authUsers)
+        .values({
+            id: LOCAL_DEV_USER_ID,
+            email: LOCAL_DEV_USER_EMAIL,
+            emailConfirmedAt: new Date(),
+            rawUserMetaData: {
+                name: LOCAL_DEV_USER_NAME,
+                avatar_url: '',
+                avatarUrl: '',
+            },
+        })
+        .onConflictDoNothing();
+
+    await db
+        .insert(users)
+        .values({
+            id: LOCAL_DEV_USER_ID,
+            email: LOCAL_DEV_USER_EMAIL,
+            firstName: 'Local',
+            lastName: 'Dev',
+            displayName: LOCAL_DEV_USER_NAME,
+            avatarUrl: '',
+        })
+        .onConflictDoNothing();
+};
 
 /**
  * 1. CONTEXT
@@ -47,14 +77,23 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
         user ??
         (localMode
             ? ({
-                id: 'local-dev-user',
-                email: 'dev@local.dev',
+                id: LOCAL_DEV_USER_ID,
+                email: LOCAL_DEV_USER_EMAIL,
                 user_metadata: {
-                    name: 'Local Dev User',
+                    name: LOCAL_DEV_USER_NAME,
                     avatar_url: '',
+                    avatarUrl: '',
                 },
             } as unknown as User)
             : null);
+
+    if (localMode && contextUser?.id === LOCAL_DEV_USER_ID) {
+        try {
+            await ensureLocalDevUserRecords();
+        } catch (localUserError) {
+            console.warn('Unable to seed local dev user records:', localUserError);
+        }
+    }
 
     return {
         db,

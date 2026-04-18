@@ -3,6 +3,7 @@
 import { useAuthContext } from '@/app/auth/auth-context';
 import { api } from '@/trpc/react';
 import { LocalForageKeys, Routes } from '@/utils/constants';
+import { LOCAL_DEV_USER_ID } from '@/utils/local-mode';
 import { SandboxTemplates, Templates } from '@onlook/constants';
 import localforage from 'localforage';
 import { useRouter } from 'next/navigation';
@@ -43,12 +44,12 @@ export function useCreateBlankProject() {
     const handleStartBlankProject = async () => {
         if (isLocalMode && userError) {
             toast.error('Local database is unavailable', {
-                description: 'Start a local database on port 5432 and try again.',
+                description: 'Start your local backend database and try again.',
             });
             return;
         }
 
-        const userId = user?.id ?? (isLocalMode ? 'local-dev-user' : null);
+        const userId = user?.id ?? (isLocalMode ? LOCAL_DEV_USER_ID : null);
         if (!userId) {
             // Store the return URL and open auth modal
             await localforage.setItem(LocalForageKeys.RETURN_URL, window.location.pathname);

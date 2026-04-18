@@ -126,7 +126,8 @@ export class SandboxManager {
             const routerConfig = await this.getRouterConfigWithRetry();
             if (!routerConfig) {
                 console.warn('[SandboxManager] No router config found for preload script injection. Skipping preload injection for now.');
-                this.preloadScriptState = PreloadScriptState.NOT_INJECTED;
+                // Do not block frame readiness when router detection is unavailable.
+                this.preloadScriptState = PreloadScriptState.INJECTED;
                 return;
             }
 
@@ -136,7 +137,7 @@ export class SandboxManager {
             console.error('[SandboxManager] Failed to ensure preload script exists:', error);
             // Mark as injected to prevent blocking frames indefinitely
             // Frames will handle the missing preload script gracefully
-            this.preloadScriptState = PreloadScriptState.NOT_INJECTED
+            this.preloadScriptState = PreloadScriptState.INJECTED
         }
     }
 

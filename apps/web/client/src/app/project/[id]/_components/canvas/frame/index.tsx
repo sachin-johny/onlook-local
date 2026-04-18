@@ -58,7 +58,8 @@ export const FrameView = observer(({ frame, isInDragSelection = false }: { frame
 
     const isSelected = editorEngine.frames.isSelected(frame.id);
     const branchData = editorEngine.branches.getBranchDataById(frame.branchId);
-    const preloadScriptReady = branchData?.sandbox?.preloadScriptState === PreloadScriptState.INJECTED;
+    const preloadScriptState = branchData?.sandbox?.preloadScriptState;
+    const preloadScriptReady = preloadScriptState !== PreloadScriptState.LOADING;
     const isFrameReady = preloadScriptReady && !(isConnecting && !hasTimedOut);
 
     useEffect(() => {

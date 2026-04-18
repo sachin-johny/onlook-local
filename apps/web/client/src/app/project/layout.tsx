@@ -5,6 +5,10 @@ import { checkUserSubscriptionAccess } from "@/utils/subscription";
 import { redirect } from "next/navigation";
 
 export default async function Layout({ children }: Readonly<{ children: React.ReactNode }>) {
+    if (env.ONLOOK_LOCAL_MODE) {
+        return <>{children}</>;
+    }
+
     const supabase = await createClient();
     const {
         data: { session },

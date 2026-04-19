@@ -9,7 +9,7 @@ export const env = createEnv({
     server: {
         NODE_ENV: z.enum(['development', 'test', 'production']),
         ONLOOK_LOCAL_MODE: z.coerce.boolean().default(false),
-        CSB_API_KEY: z.string(),
+        CSB_API_KEY: z.string().optional(),
         SUPABASE_DATABASE_URL: z.url(),
         SUPABASE_SERVICE_ROLE_KEY: z.string(),
         RESEND_API_KEY: z.string().optional(),

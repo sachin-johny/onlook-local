@@ -12,8 +12,8 @@ interface ApiKeyConfig {
 const API_KEYS: Record<string, ApiKeyConfig> = {
     CSB_API_KEY: {
         name: 'CSB_API_KEY',
-        message: 'Enter your Codesandbox API key:',
-        required: true,
+        message: 'Enter your Codesandbox API key (optional in local mode):',
+        required: false,
     },
     OPENROUTER_API_KEY: {
         name: 'OPENROUTER_API_KEY',

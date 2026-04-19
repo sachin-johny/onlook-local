@@ -25,7 +25,7 @@ export function getSandboxPreviewUrl(sandboxId: string, port: number) {
         process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
 
     if (localMode) {
-        return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+        return process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL?.trim() || 'http://localhost:8084';
     }
 
     return `https://${sandboxId}-${port}.${CSB_DOMAIN}`;

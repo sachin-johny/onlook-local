@@ -72,7 +72,13 @@ function newProviderInstance(codeProvider: CodeProvider, providerOptions: Provid
     }
 
     if (codeProvider === CodeProvider.NodeFs) {
-        return new NodeFsProvider(providerOptions.nodefs ?? {});
+        const derivedNodeFsOptions: NodeFsProviderOptions = {
+            sandboxId: providerOptions.nodefs?.sandboxId ?? providerOptions.codesandbox?.sandboxId,
+            userId: providerOptions.nodefs?.userId ?? providerOptions.codesandbox?.userId,
+            previewUrl: providerOptions.nodefs?.previewUrl,
+        };
+
+        return new NodeFsProvider(derivedNodeFsOptions);
     }
 
     throw new Error(`Unimplemented code provider: ${codeProvider}`);

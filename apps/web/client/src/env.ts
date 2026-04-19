@@ -70,6 +70,7 @@ export const env = createEnv({
     client: {
         NEXT_PUBLIC_ONLOOK_LOCAL_MODE: z.coerce.boolean().default(false),
         NEXT_PUBLIC_SITE_URL: z.url().default('http://localhost:3000'),
+        NEXT_PUBLIC_LOCAL_PREVIEW_URL: z.string().url().optional(),
         NEXT_PUBLIC_SUPABASE_URL: z.string(),
         NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string(),
         NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
@@ -96,6 +97,7 @@ export const env = createEnv({
         SUPABASE_DATABASE_URL: process.env.SUPABASE_DATABASE_URL,
         SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
         NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+        NEXT_PUBLIC_LOCAL_PREVIEW_URL: process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL,
         NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
         NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
 

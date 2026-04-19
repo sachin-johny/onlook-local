@@ -184,8 +184,7 @@ export class SessionManager {
     async ping() {
         if (!this.provider) return false;
         try {
-            await this.provider.runCommand({ args: { command: 'echo "ping"' } });
-            return true;
+            return await this.provider.ping();
         } catch (error) {
             console.error('Failed to connect to sandbox', error);
             return false;

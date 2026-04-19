@@ -1,4 +1,5 @@
 import { TRPCError } from '@trpc/server';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import {
@@ -11,12 +12,34 @@ import { shortenUuid } from '@onlook/utility/src/id';
 
 import { createTRPCRouter, protectedProcedure } from '../../trpc';
 
+function isLocalModeEnabled() {
+    return (
+        process.env.ONLOOK_LOCAL_MODE === 'true' ||
+        process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true'
+    );
+}
+
+function hasUsableCodesandboxKey() {
+    const key = process.env.CSB_API_KEY?.trim();
+    return !!key && !key.startsWith('local-');
+}
+
+function createLocalSandbox(port: number) {
+    const sandboxId = `local-${randomUUID()}`;
+    return {
+        sandboxId,
+        previewUrl: getSandboxPreviewUrl(sandboxId, port),
+    };
+}
+
 function getProvider({
     sandboxId,
     userId,
+    previewUrl,
     provider = CodeProvider.CodeSandbox,
 }: {
     sandboxId: string;
+    previewUrl?: string;
     provider?: CodeProvider;
     userId?: undefined | string;
 }) {
@@ -32,7 +55,11 @@ function getProvider({
     } else {
         return createCodeProviderClient(CodeProvider.NodeFs, {
             providerOptions: {
-                nodefs: {},
+                nodefs: {
+                    sandboxId,
+                    userId,
+                    previewUrl,
+                },
             },
         });
     }
@@ -46,6 +73,10 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input, ctx }) => {
+            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+                return createLocalSandbox(3000);
+            }
+
             // Create a new sandbox using the static provider
             const CodesandboxProvider = await getStaticCodeProvider(CodeProvider.CodeSandbox);
 
@@ -74,9 +105,11 @@ export const sandboxRouter = createTRPCRouter({
         )
         .mutation(async ({ input, ctx }) => {
             const userId = ctx.user.id;
+            const previewUrl = getSandboxPreviewUrl(input.sandboxId, 3000);
             const provider = await getProvider({
                 sandboxId: input.sandboxId,
                 userId,
+                previewUrl,
             });
             const session = await provider.createSession({
                 args: {
@@ -86,6 +119,48 @@ export const sandboxRouter = createTRPCRouter({
             await provider.destroy();
             return session;
         }),
+    status: protectedProcedure
+        .input(
+            z.object({
+                sandboxId: z.string(),
+            }),
+        )
+        .query(async ({ input }) => {
+            const previewUrl = getSandboxPreviewUrl(input.sandboxId, 3000);
+
+            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+                try {
+                    await fetch(previewUrl, {
+                        cache: 'no-store',
+                        mode: 'no-cors',
+                        signal: controller.signal,
+                    });
+
+                    return {
+                        sandboxId: input.sandboxId,
+                        status: 'running' as const,
+                        previewUrl,
+                    };
+                } catch {
+                    return {
+                        sandboxId: input.sandboxId,
+                        status: 'unreachable' as const,
+                        previewUrl,
+                    };
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            }
+
+            return {
+                sandboxId: input.sandboxId,
+                status: 'running' as const,
+                previewUrl,
+            };
+        }),
     hibernate: protectedProcedure
         .input(
             z.object({
@@ -93,15 +168,21 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
-            const provider = await getProvider({ sandboxId: input.sandboxId });
+            const provider = await getProvider({
+                sandboxId: input.sandboxId,
+                previewUrl: getSandboxPreviewUrl(input.sandboxId, 3000),
+            });
             try {
                 await provider.pauseProject({});
             } finally {
-                await provider.destroy().catch(() => {});
+                await provider.destroy().catch(() => { });
             }
         }),
     list: protectedProcedure.input(z.object({ sandboxId: z.string() })).query(async ({ input }) => {
-        const provider = await getProvider({ sandboxId: input.sandboxId });
+        const provider = await getProvider({
+            sandboxId: input.sandboxId,
+            previewUrl: getSandboxPreviewUrl(input.sandboxId, 3000),
+        });
         const res = await provider.listProjects({});
         // TODO future iteration of code provider abstraction will need this code to be refactored
         if ('projects' in res) {
@@ -125,6 +206,10 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
+            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+                return createLocalSandbox(input.sandbox.port);
+            }
+
             const MAX_RETRY_ATTEMPTS = 3;
             let lastError: Error | null = null;
 
@@ -172,11 +257,14 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
-            const provider = await getProvider({ sandboxId: input.sandboxId });
+            const provider = await getProvider({
+                sandboxId: input.sandboxId,
+                previewUrl: getSandboxPreviewUrl(input.sandboxId, 3000),
+            });
             try {
                 await provider.stopProject({});
             } finally {
-                await provider.destroy().catch(() => {});
+                await provider.destroy().catch(() => { });
             }
         }),
     createFromGitHub: protectedProcedure
@@ -187,6 +275,10 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
+            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+                return createLocalSandbox(3000);
+            }
+
             const MAX_RETRY_ATTEMPTS = 3;
             const DEFAULT_PORT = 3000;
             let lastError: Error | null = null;

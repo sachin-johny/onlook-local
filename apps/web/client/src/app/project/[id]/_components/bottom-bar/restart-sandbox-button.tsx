@@ -38,7 +38,15 @@ export const RestartSandboxButton = observer(({
         }
 
         if (sandbox.session.provider) {
-            setHasSandboxError(false);
+            void sandbox.session.ping().then((isHealthy) => {
+                // Only show error after initial grace period
+                const timeSinceMount = Date.now() - mountTimeRef.current;
+                if (!isHealthy && timeSinceMount >= 5000) {
+                    setHasSandboxError(true);
+                    return;
+                }
+                setHasSandboxError(false);
+            });
         } else {
             // Only show error after initial grace period
             const timeSinceMount = Date.now() - mountTimeRef.current;

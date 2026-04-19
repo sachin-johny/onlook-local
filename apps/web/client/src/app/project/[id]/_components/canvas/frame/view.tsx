@@ -37,6 +37,14 @@ const getSafeFallbackForMethod = async (method: string) => {
     return undefined;
 };
 
+const NATIVE_DOM_METHODS = new Set([
+    'getBoundingClientRect', 'getClientRects', 'querySelector', 'querySelectorAll',
+    'getAttribute', 'setAttribute', 'removeAttribute', 'hasAttribute',
+    'addEventListener', 'removeEventListener', 'dispatchEvent',
+    'focus', 'blur', 'click', 'scrollIntoView', 'scrollIntoViewIfNeeded',
+    'matches', 'closest', 'contains', 'getComputedStyle',
+]);
+
 const createSafeFrameView = <T extends object>(base: T): T & PromisifiedPendpalChildMethods => {
     return new Proxy(base as T & PromisifiedPendpalChildMethods, {
         get(target, prop: string | symbol) {
@@ -44,6 +52,10 @@ const createSafeFrameView = <T extends object>(base: T): T & PromisifiedPendpalC
 
             const existing = Reflect.get(target, prop);
             if (existing !== undefined) {
+                // Bind native DOM methods to the target so `this` is the real element
+                if (typeof existing === 'function' && NATIVE_DOM_METHODS.has(String(prop))) {
+                    return existing.bind(target);
+                }
                 return existing;
             }
 

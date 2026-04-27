@@ -130,6 +130,14 @@ Actionable rules for repo agents—keep diffs minimal, safe, token‑efficient.
 - Avoid `useMemo` to create MobX stores (risk of lost references); avoid
   synchronous cleanup on route change (race conditions).
 
+### Wiki & Project Docs
+
+- Architecture wiki: `.claude/wiki/` — deep-dive references for DB layer, tRPC API,
+  local mode, and active initiatives. Start with `.claude/wiki/index.md`.
+- GSD milestones: `.claude/gsd/milestones.md` — task tracking for in-progress work.
+- Read the wiki before modifying DB, tRPC, or local-mode code to understand
+  current architecture and active migration plans.
+
 ### Context Discipline (for Agents)
 
 - Search narrowly with ripgrep; open only files you need.

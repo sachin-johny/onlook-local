@@ -47,3 +47,16 @@ mise.toml
 
 # Temporary files
 .tmp/
+
+# Claude Code agent workspace
+.claude/
+
+# GSD
+.gsd
+.gsd-id
+
+# Background shells
+.bg-shell/
+
+# MCP config
+.mcp.json

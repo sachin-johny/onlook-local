@@ -1,5 +1,6 @@
 import { api } from '@/trpc/client';
 import { CodeProvider, createCodeProviderClient, type Provider } from '@onlook/code-provider';
+import { isLocalModeEnabled } from '@/utils/local-mode';
 import type { Branch } from '@onlook/models';
 import { makeAutoObservable } from 'mobx';
 import type { ErrorManager } from '../error';
@@ -29,19 +30,31 @@ export class SessionManager {
         this.isConnecting = true;
 
         const attemptConnection = async () => {
-            const provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
-                providerOptions: {
-                    codesandbox: {
-                        sandboxId,
-                        userId,
-                        initClient: true,
-                        getSession: async (sandboxId, userId) => {
-                            return api.sandbox.start.mutate({ sandboxId });
+            let provider;
+            if (isLocalModeEnabled()) {
+                provider = await createCodeProviderClient(CodeProvider.NodeFs, {
+                    providerOptions: {
+                        nodefs: {
+                            sandboxId,
+                            userId,
+                            previewUrl: process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL,
                         },
                     },
-                },
-            });
-
+                });
+            } else {
+                provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
+                    providerOptions: {
+                        codesandbox: {
+                            sandboxId,
+                            userId,
+                            initClient: true,
+                            getSession: async (sandboxId, userId) => {
+                                return api.sandbox.start.mutate({ sandboxId });
+                            },
+                        },
+                    },
+                });
+            }
             this.provider = provider;
             await this.createTerminalSessions(provider);
         };

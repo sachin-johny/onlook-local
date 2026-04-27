@@ -14,6 +14,24 @@ export function ThemeGroup({ frameData }: { frameData: FrameData }) {
         typeof frameData.view.getTheme === 'function' &&
         typeof frameData.view.setTheme === 'function';
 
+    // useEffect(() => {
+    //     // if (typeof window === 'undefined') return; // Prevent SSR/build errors
+    //     const getTheme = async () => {
+    //         if (!hasThemeApi) {
+    //             return;
+    //         }
+
+    //         try {
+    //             const nextTheme = await frameData.view.getTheme();
+    //             if (nextTheme) {
+    //                 setTheme(nextTheme);
+    //             }
+    //         } catch {
+    //             // Frame is still initializing; keep the current theme selection.
+    //         }
+    //     };
+    //     void getTheme();
+    // }, [frameData, hasThemeApi]);
     useEffect(() => {
         const getTheme = async () => {
             if (!hasThemeApi) {
@@ -21,14 +39,14 @@ export function ThemeGroup({ frameData }: { frameData: FrameData }) {
             }
 
             try {
-                const nextTheme = await frameData.view.getTheme();
+                const nextTheme = await frameData.view?.getTheme();
                 if (nextTheme) {
                     setTheme(nextTheme);
                 }
             } catch {
                 // Frame is still initializing; keep the current theme selection.
             }
-        }
+        };
         void getTheme();
     }, [frameData, hasThemeApi]);
 

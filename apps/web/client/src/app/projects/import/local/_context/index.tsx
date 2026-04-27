@@ -6,6 +6,7 @@ import { createContext, useContext, useState } from 'react';
 
 import type { Provider } from '@onlook/code-provider';
 import { CodeProvider, createCodeProviderClient } from '@onlook/code-provider';
+import { isLocalModeEnabled } from '@/utils/local-mode';
 import { NEXT_JS_FILE_EXTENSIONS, SandboxTemplates, Templates } from '@onlook/constants';
 import { RouterType } from '@onlook/models';
 import { isTargetFile } from '@onlook/utility';
@@ -135,12 +136,14 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
         try {
             setIsFinalizing(true);
 
-            if (isLocalMode && userError) {
+            const localMode = isLocalModeEnabled();
+
+            if (localMode && userError) {
                 setError('Local database is unavailable. Start your local backend database and retry.');
                 return;
             }
 
-            const userId = user?.id ?? (isLocalMode ? LOCAL_DEV_USER_ID : null);
+            const userId = user?.id ?? (localMode ? LOCAL_DEV_USER_ID : null);
 
             if (!userId) {
                 setError('No user found. Please sign in and try again.');
@@ -171,19 +174,32 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
                 'Sandbox initialization timed out. Please retry.',
             );
 
-            const provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
-                providerOptions: {
-                    codesandbox: {
-                        sandboxId: forkedSandbox.sandboxId,
-                        userId,
-                        initClient: true,
-                        keepActiveWhileConnected: false,
-                        getSession: async (sandboxId) => {
-                            return startSandbox({ sandboxId });
+            let provider;
+            if (localMode) {
+                provider = await createCodeProviderClient(CodeProvider.NodeFs, {
+                    providerOptions: {
+                        nodefs: {
+                            sandboxId: forkedSandbox.sandboxId,
+                            userId,
+                            previewUrl: process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL,
                         },
                     },
-                },
-            });
+                });
+            } else {
+                provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
+                    providerOptions: {
+                        codesandbox: {
+                            sandboxId: forkedSandbox.sandboxId,
+                            userId,
+                            initClient: true,
+                            keepActiveWhileConnected: false,
+                            getSession: async (sandboxId) => {
+                                return startSandbox({ sandboxId });
+                            },
+                        },
+                    },
+                });
+            }
 
             await uploadToSandbox(projectData.files, provider);
             await provider.setup({});

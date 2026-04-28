@@ -33,7 +33,7 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
             try {
                 const frameData = getFrameData();
                 if (!frameData?.view) {
-                    throw new Error('Frame view not found');
+                    return;
                 }
                 if (typeof frameData.view.getElementAtLoc !== 'function') {
                     return;
@@ -48,7 +48,7 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
                     shouldGetStyle,
                 );
                 if (!el) {
-                    throw new Error('No element found');
+                    return;
                 }
 
                 switch (action) {

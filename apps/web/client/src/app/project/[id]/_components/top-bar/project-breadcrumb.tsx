@@ -18,7 +18,7 @@ import { toast } from '@onlook/ui/sonner';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
 import { useTranslations } from 'next-intl';
-import { redirect } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 import { useRef, useState } from 'react';
 import { CloneProjectDialog } from '../clone-project-dialog';
@@ -31,6 +31,7 @@ export const ProjectBreadcrumb = observer(() => {
     const editorEngine = useEditorEngine();
     const stateManager = useStateManager();
     const posthog = usePostHog();
+    const router = useRouter();
     const { handleStartBlankProject, isCreatingProject, isNameDialogOpen, setIsNameDialogOpen } = useCreateBlankProject();
     const { data: project } = api.project.get.useQuery({ projectId: editorEngine.projectId });
     const { data: subscription } = api.subscription.get.useQuery();
@@ -42,17 +43,16 @@ export const ProjectBreadcrumb = observer(() => {
     const [isDownloading, setIsDownloading] = useState(false);
     const [showCloneDialog, setShowCloneDialog] = useState(false);
 
-    async function handleNavigateToProjects(_route?: 'create' | 'import') {
+    function handleNavigateToProjects(_route?: 'create' | 'import') {
         try {
             setIsClosingProject(true);
-
             editorEngine.screenshot.captureScreenshot();
         } catch (error) {
             console.error('Failed to take screenshots:', error);
         } finally {
             setTimeout(() => {
                 setIsClosingProject(false);
-                redirect('/projects');
+                router.push('/projects');
             }, 100);
         }
     }

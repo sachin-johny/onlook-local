@@ -41,7 +41,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
         api.subscription.get.useQuery();
     const { mutateAsync: removeTag } = api.project.removeTag.useMutation();
     // const { handleStartBlankProject, isCreatingProject } = useCreateBlankProject();
-    const {openNameDialog, handleStartBlankProject, isCreatingProject, isNameDialogOpen, setIsNameDialogOpen } = useCreateBlankProject();
+    const { openNameDialog, handleStartBlankProject, isCreatingProject, isNameDialogOpen, setIsNameDialogOpen } = useCreateBlankProject();
     const backendError = userError ?? projectListError ?? subscriptionError;
 
     // Search and filters
@@ -274,6 +274,12 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                         </Button>
                     </div>
                 </div>
+                <CreateProjectDialog
+                    open={isNameDialogOpen}
+                    onClose={() => setIsNameDialogOpen(false)}
+                    onSubmit={handleStartBlankProject}
+                />
+                <CreatingProjectOverlay isVisible={isCreatingProject} />
             </div>
         );
     }

@@ -51,6 +51,12 @@ mise.toml
 # Claude Code agent workspace
 .claude/
 
+# SQLite local DB
+onlook-local.db
+onlook-local.db-shm
+onlook-local.db-wal
+onlook-local.db-journal
+
 # GSD
 .gsd
 .gsd-id

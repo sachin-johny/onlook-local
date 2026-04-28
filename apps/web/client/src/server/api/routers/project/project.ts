@@ -29,6 +29,7 @@ import {
     type Canvas,
     type UserCanvas
 } from '@onlook/db';
+import { v4 as uuidv4 } from 'uuid';
 import { compressImageServer } from '@onlook/image-server';
 import { LLMProvider, OPENROUTER_MODELS, ProjectCreateRequestStatus, ProjectRole } from '@onlook/models';
 import { getScreenshotPath } from '@onlook/utility';
@@ -247,7 +248,13 @@ export const projectRouter = createTRPCRouter({
         .mutation(async ({ ctx, input }) => {
             return await ctx.db.transaction(async (tx) => {
                 // 1. Insert the new project
-                const [newProject] = await tx.insert(projects).values(input.project).returning();
+                const now = new Date();
+                const [newProject] = await tx.insert(projects).values({
+                    ...input.project,
+                    id: input.project.id ?? uuidv4(),
+                    createdAt: input.project.createdAt ?? now,
+                    updatedAt: input.project.updatedAt ?? now,
+                }).returning();
                 if (!newProject) {
                     throw new Error('Failed to create project in database');
                 }
@@ -291,10 +298,14 @@ export const projectRouter = createTRPCRouter({
 
                 // 7. Create the creation request
                 if (input.creationData) {
+                    const createNow = new Date();
                     await tx.insert(projectCreateRequests).values({
                         ...input.creationData,
+                        id: input.creationData.id ?? uuidv4(),
                         status: ProjectCreateRequestStatus.PENDING,
                         projectId: newProject.id,
+                        createdAt: input.creationData.createdAt ?? createNow,
+                        updatedAt: input.creationData.updatedAt ?? createNow,
                     });
                 }
 

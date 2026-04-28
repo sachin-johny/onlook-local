@@ -9,8 +9,9 @@ export const env = createEnv({
     server: {
         NODE_ENV: z.enum(['development', 'test', 'production']),
         ONLOOK_LOCAL_MODE: z.coerce.boolean().default(false),
+        ONLOOK_LOCAL_DB_PATH: z.string().optional(),
         CSB_API_KEY: z.string().optional(),
-        SUPABASE_DATABASE_URL: z.url(),
+        SUPABASE_DATABASE_URL: z.string().optional(),
         SUPABASE_SERVICE_ROLE_KEY: z.string(),
         RESEND_API_KEY: z.string().optional(),
         FREESTYLE_API_KEY: z.string().optional(),
@@ -88,6 +89,7 @@ export const env = createEnv({
     runtimeEnv: {
         NODE_ENV: process.env.NODE_ENV,
         ONLOOK_LOCAL_MODE: process.env.ONLOOK_LOCAL_MODE,
+        ONLOOK_LOCAL_DB_PATH: process.env.ONLOOK_LOCAL_DB_PATH,
         NEXT_PUBLIC_ONLOOK_LOCAL_MODE: process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE,
         CSB_API_KEY: process.env.CSB_API_KEY,
         RESEND_API_KEY: process.env.RESEND_API_KEY,

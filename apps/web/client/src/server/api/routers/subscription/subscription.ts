@@ -8,6 +8,7 @@ import { createTRPCRouter, protectedProcedure } from '../../trpc';
 
 export const subscriptionRouter = createTRPCRouter({
     getLegacySubscriptions: protectedProcedure.query(async ({ ctx }) => {
+        if (ctx.localMode) return null;
         const user = ctx.user;
         const subscription = await ctx.db.query.legacySubscriptions.findFirst({
             where: and(
@@ -18,6 +19,7 @@ export const subscriptionRouter = createTRPCRouter({
         return subscription ?? null;
     }),
     get: protectedProcedure.query(async ({ ctx }) => {
+        if (ctx.localMode) return null;
         const user = ctx.user;
         const subscription = await ctx.db.query.subscriptions.findFirst({
             where: and(

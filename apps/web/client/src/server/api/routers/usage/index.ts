@@ -9,6 +9,9 @@ import { createTRPCRouter, protectedProcedure } from '../../trpc';
 
 export const usageRouter = createTRPCRouter({
     get: protectedProcedure.query(async ({ ctx }): Promise<UsageResult> => {
+        if (ctx.localMode) {
+            return { daily: { period: 'day', usageCount: 0, limitCount: Infinity }, monthly: { period: 'month', usageCount: 0, limitCount: Infinity } };
+        }
         const user = ctx.user;
         return ctx.db.transaction(async (tx) => {
             // Calculate date ranges
@@ -30,6 +33,7 @@ export const usageRouter = createTRPCRouter({
         type: z.enum(UsageType),
         traceId: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+        if (ctx.localMode) return;
         const user = ctx.user;
         // running a transaction helps with concurrency issues and ensures that
         // the usage is incremented atomically
@@ -87,6 +91,7 @@ export const usageRouter = createTRPCRouter({
         usageRecordId: z.string().optional(),
         rateLimitId: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+        if (ctx.localMode) return;
         return ctx.db.transaction(async (tx) => {
             if (input.rateLimitId) {
                 await tx.update(rateLimits).set({

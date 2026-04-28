@@ -4,12 +4,14 @@ ENV_FILE := apps/web/client/.env
 ENV_LOCAL_FILE := apps/web/client/.env.local
 ENV_EXAMPLE_FILE := apps/web/client/.env.example
 
-.PHONY: help start-local stop-local backend-start backend-stop db-push
+.PHONY: help start-local stop-local start-local-sqlite local-db-reset backend-start backend-stop db-push
 
 help:
 	@echo "Usage:"
-	@echo "  make start-local   # Start Supabase, push schema, run dev app"
-	@echo "  make stop-local    # Stop dev app, then stop Supabase"
+	@echo "  make start-local        # Start Supabase, push schema, run dev app"
+	@echo "  make start-local-sqlite # Start with SQLite (no Supabase needed)"
+	@echo "  make local-db-reset     # Delete and re-create the SQLite database"
+	@echo "  make stop-local         # Stop dev app, then stop Supabase"
 
 ensure-env:
 	@if [ ! -f "$(ENV_FILE)" ]; then \
@@ -43,3 +45,10 @@ start-local: ensure-env docker-check backend-start db-push
 stop-local:
 	@lsof -tiTCP:3000 -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null || true
 	@$(MAKE) backend-stop
+
+start-local-sqlite: ensure-env
+	@ONLOOK_LOCAL_MODE=true NEXT_PUBLIC_ONLOOK_LOCAL_MODE=true SKIP_ENV_VALIDATION=true bun run dev
+
+local-db-reset:
+	@rm -f ./onlook-local.db
+	@echo "SQLite database deleted. It will be re-created on next start."

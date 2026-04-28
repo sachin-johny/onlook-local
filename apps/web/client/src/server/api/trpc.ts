@@ -10,15 +10,23 @@
 import { createAdminClient } from '@/utils/supabase/admin';
 import { LOCAL_DEV_USER_EMAIL, LOCAL_DEV_USER_ID, LOCAL_DEV_USER_NAME } from '@/utils/local-mode';
 import { createClient } from '@/utils/supabase/server';
-import { authUsers, users } from '@onlook/db';
-import { db } from '@onlook/db/src/client';
+import { authUsers, users, type DrizzleDb } from '@onlook/db';
+import { db as pgDb } from '@onlook/db/src/client';
+import { getDb as getSqliteDb, initSqliteDb } from '@onlook/db/src/sqlite-client';
+import * as sqliteSchema from '@onlook/db/src/sqlite-schema';
 import type { User } from '@supabase/supabase-js';
 import { initTRPC, TRPCError } from '@trpc/server';
 import superjson from 'superjson';
 import type { SetRequiredDeep } from 'type-fest';
 import { ZodError } from 'zod';
 
-const ensureLocalDevUserRecords = async () => {
+const ensureLocalDevUserRecords = async (db: DrizzleDb, localMode: boolean) => {
+    if (localMode) {
+        // SQLite mode: initSqliteDb already seeds the local dev user
+        return;
+    }
+
+    // Postgres mode: insert into authUsers + users tables
     await db
         .insert(authUsers)
         .values({
@@ -63,6 +71,12 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
         process.env.ONLOOK_LOCAL_MODE === 'true' ||
         process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
 
+    const db: DrizzleDb = localMode ? getSqliteDb() as unknown as DrizzleDb : pgDb;
+
+    if (localMode) {
+        await initSqliteDb();
+    }
+
     const supabase = await createClient();
     const {
         data: { user },
@@ -89,7 +103,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 
     if (localMode && contextUser?.id === LOCAL_DEV_USER_ID) {
         try {
-            await ensureLocalDevUserRecords();
+            await ensureLocalDevUserRecords(db, localMode);
         } catch (localUserError) {
             console.warn('Unable to seed local dev user records:', localUserError);
         }
@@ -99,6 +113,7 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
         db,
         supabase,
         user: contextUser,
+        localMode,
         ...opts,
     };
 };
@@ -198,9 +213,9 @@ export const protectedProcedure = t.procedure.use(timingMiddleware).use(({ ctx, 
 
     return next({
         ctx: {
-            // infers the `session` as non-nullable
             user: ctx.user as SetRequiredDeep<User, 'email'>,
             db: ctx.db,
+            localMode: ctx.localMode,
         },
     });
 });
@@ -229,9 +244,9 @@ export const adminProcedure = t.procedure.use(timingMiddleware).use(({ ctx, next
 
     return next({
         ctx: {
-            // infers the `session` as non-nullable
             user: ctx.user as SetRequiredDeep<User, 'email'>,
             db: ctx.db,
+            localMode: ctx.localMode,
             supabase: adminSupabase, // Override with admin client
         },
     });

@@ -96,6 +96,7 @@ export const userRouter = createTRPCRouter({
         }),
     settings: userSettingsRouter,
     delete: protectedProcedure.mutation(async ({ ctx }) => {
+        if (ctx.localMode) return;
         await ctx.db.delete(authUsers).where(eq(authUsers.id, ctx.user.id));
     }),
 });

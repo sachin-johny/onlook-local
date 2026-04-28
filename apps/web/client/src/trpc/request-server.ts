@@ -24,6 +24,7 @@ export const createTRPCContext = async (req: NextRequest, opts: { headers: Heade
         db,
         supabase,
         user,
+        localMode: false,
         ...opts,
     };
 };

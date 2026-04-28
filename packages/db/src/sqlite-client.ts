@@ -15,7 +15,7 @@ function patchDefaults(obj: Record<string, any>, id: string, now: Date): Record<
         startedAt: obj.startedAt ?? now,
         endedAt: obj.endedAt ?? now,
         timestamp: obj.timestamp ?? now,
-        type: obj.type ?? 'root',
+        // type: obj.type ?? 'root',
         ...obj,
     };
 }
@@ -181,7 +181,7 @@ const CREATE_TABLES_SQL = `
         y TEXT NOT NULL,
         width TEXT NOT NULL,
         height TEXT NOT NULL,
-        type TEXT NOT NULL DEFAULT 'root'
+        type TEXT DEFAULT 'root'
     );
 
     -- User-Project junction
@@ -339,6 +339,7 @@ const CREATE_TABLES_SQL = `
     CREATE TABLE IF NOT EXISTS deployments (
         id TEXT PRIMARY KEY,
         project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        type TEXT,
         status TEXT,
         url TEXT,
         created_at INTEGER DEFAULT (unixepoch())

@@ -37,7 +37,7 @@ export const projects = sqliteTable('projects', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     name: text('name').notNull(),
     description: text('description'),
-    tags: text('tags', { mode: 'json' }).$type<string[]>().default([]),
+    tags: text('tags').$defaultFn(() => '[]'),
     previewImgUrl: text('preview_img_url'),
     previewImgPath: text('preview_img_path'),
     previewImgBucket: text('preview_img_bucket'),
@@ -84,6 +84,7 @@ export const frames = sqliteTable('frames', {
     y: text('y').notNull(),
     width: text('width').notNull(),
     height: text('height').notNull(),
+    type: text('type').$defaultFn(() => 'root'),
 });
 
 // ─── User-Project ────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ export const conversations = sqliteTable('conversations', {
     projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
     displayName: text('display_name'),
     agentType: text('agent_type', { enum: ['root', 'user'] }).default('root'),
-    suggestions: text('suggestions', { mode: 'json' }).$type<any[]>().default([]),
+    suggestions: text('suggestions').$defaultFn(() => '[]'),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
@@ -138,9 +139,9 @@ export const messages = sqliteTable('messages', {
     conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
     content: text('content').notNull(),
     role: text('role', { enum: ['user', 'assistant', 'system'] }).notNull(),
-    context: text('context', { mode: 'json' }).$type<any[]>().default([]),
-    parts: text('parts', { mode: 'json' }).$type<any[]>().default([]),
-    checkpoints: text('checkpoints', { mode: 'json' }).$type<any[]>().default([]),
+    context: text('context').$defaultFn(() => '[]'),
+    parts: text('parts').$defaultFn(() => '[]'),
+    checkpoints: text('checkpoints').$defaultFn(() => '[]'),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
 });
 
@@ -169,7 +170,7 @@ export const projectInvitations = sqliteTable('project_invitations', {
 export const projectCreateRequests = sqliteTable('project_create_requests', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-    context: text('context', { mode: 'json' }).$type<any[]>().notNull(),
+    context: text('context').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
     status: text('status').notNull().default('pending'),
@@ -244,6 +245,7 @@ export const customDomainVerification = sqliteTable('custom_domain_verification'
 export const deployments = sqliteTable('deployments', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    type: text('type'),
     status: text('status'),
     url: text('url'),
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),

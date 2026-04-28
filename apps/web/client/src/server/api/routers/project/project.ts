@@ -40,6 +40,25 @@ import { projectCreateRequestRouter } from './createRequest';
 import { fork } from './fork';
 import { extractCsbPort, verifyProjectAccess } from './helper';
 
+const normalizeTags = (tags: unknown): string[] => {
+    if (Array.isArray(tags)) {
+        return tags.filter((t): t is string => typeof t === 'string');
+    }
+
+    if (typeof tags === 'string') {
+        try {
+            const parsed = JSON.parse(tags);
+            return Array.isArray(parsed)
+                ? parsed.filter((t): t is string => typeof t === 'string')
+                : [];
+        } catch {
+            return [];
+        }
+    }
+
+    return [];
+};
+
 export const projectRouter = createTRPCRouter({
     hasAccess: protectedProcedure
         .input(z.object({ projectId: z.string() }))
@@ -176,15 +195,15 @@ export const projectRouter = createTRPCRouter({
         }),
     list: protectedProcedure
         .input(z.object({
-            limit: z.number().optional(),
-            excludeProjectId: z.string().optional(),
-        }).optional())
+                limit: z.number().optional(),
+                excludeProjectId: z.string().optional(),
+            }).optional())
         .query(async ({ ctx, input }) => {
             const fetchedUserProjects = await ctx.db.query.userProjects.findMany({
                 where: input?.excludeProjectId ? and(
-                    eq(userProjects.userId, ctx.user.id),
-                    ne(userProjects.projectId, input.excludeProjectId),
-                ) : eq(userProjects.userId, ctx.user.id),
+                          eq(userProjects.userId, ctx.user.id),
+                          ne(userProjects.projectId, input.excludeProjectId),
+                      ) : eq(userProjects.userId, ctx.user.id),
                 with: {
                     project: true,
                 },
@@ -235,26 +254,27 @@ export const projectRouter = createTRPCRouter({
         }),
     create: protectedProcedure
         .input(z.object({
-            project: projectInsertSchema,
-            userId: z.string(),
-            sandboxId: z.string(),
-            sandboxUrl: z.string(),
-            creationData: projectCreateRequestInsertSchema
-                .omit({
-                    projectId: true,
-                })
-                .optional(),
-        }))
+                project: projectInsertSchema,
+                userId: z.string(),
+                sandboxId: z.string(),
+                sandboxUrl: z.string(),
+                creationData: projectCreateRequestInsertSchema
+                    .omit({
+                        projectId: true,
+                    })
+                    .optional(),
+            }))
         .mutation(async ({ ctx, input }) => {
             return await ctx.db.transaction(async (tx) => {
                 // 1. Insert the new project
                 const now = new Date();
                 const [newProject] = await tx.insert(projects).values({
-                    ...input.project,
-                    id: input.project.id ?? uuidv4(),
-                    createdAt: input.project.createdAt ?? now,
-                    updatedAt: input.project.updatedAt ?? now,
-                }).returning();
+                        ...input.project,
+                        tags: normalizeTags(input.project.tags),
+                        id: input.project.id ?? uuidv4(),
+                        createdAt: input.project.createdAt ?? now,
+                        updatedAt: input.project.updatedAt ?? now,
+                    }).returning();
                 if (!newProject) {
                     throw new Error('Failed to create project in database');
                 }
@@ -322,8 +342,8 @@ export const projectRouter = createTRPCRouter({
     fork,
     generateName: protectedProcedure
         .input(z.object({
-            prompt: z.string(),
-        }))
+                prompt: z.string(),
+            }))
         .mutation(async ({ ctx, input }): Promise<string> => {
             try {
                 const { model, providerOptions, headers } = initModel({
@@ -369,73 +389,74 @@ export const projectRouter = createTRPCRouter({
     getPreviewProjects: protectedProcedure
         .input(z.object({ userId: z.string() }))
         .query(async ({ ctx, input }) => {
-            const projects = await ctx.db.query.userProjects.findMany({
+            const projectsList = await ctx.db.query.userProjects.findMany({
                 where: eq(userProjects.userId, input.userId),
                 with: {
                     project: true,
                 },
             });
-            return projects.map((project) => fromDbProject(project.project));
+            return projectsList.map((project) => fromDbProject(project.project));
         }),
     update: protectedProcedure.input(projectUpdateSchema).mutation(async ({ ctx, input }) => {
-        await verifyProjectAccess(ctx.db, ctx.user.id, input.id);
-        const [updatedProject] = await ctx.db.update(projects).set({
-            ...input,
-            updatedAt: new Date(),
-        }).where(
-            eq(projects.id, input.id)
-        ).returning();
-        if (!updatedProject) {
-            throw new Error('Project not found');
-        }
-        return fromDbProject(updatedProject);
-    }),
+            await verifyProjectAccess(ctx.db, ctx.user.id, input.id);
+            const [updatedProject] = await ctx.db.update(projects).set({
+                    ...input,
+                    tags: normalizeTags(input.tags),
+                    updatedAt: new Date(),
+                }).where(
+                    eq(projects.id, input.id)
+                ).returning();
+            if (!updatedProject) {
+                throw new Error('Project not found');
+            }
+            return fromDbProject(updatedProject);
+        }),
     addTag: protectedProcedure.input(z.object({
-        projectId: z.string(),
-        tag: z.string(),
-    })).mutation(async ({ ctx, input }) => {
-        await verifyProjectAccess(ctx.db, ctx.user.id, input.projectId);
-        const project = await ctx.db.query.projects.findFirst({
-            where: eq(projects.id, input.projectId),
-        });
+                projectId: z.string(),
+                tag: z.string(),
+        })).mutation(async ({ ctx, input }) => {
+            await verifyProjectAccess(ctx.db, ctx.user.id, input.projectId);
+            const project = await ctx.db.query.projects.findFirst({
+                where: eq(projects.id, input.projectId),
+            });
 
-        if (!project) {
-            throw new Error('Project not found');
-        }
+            if (!project) {
+                throw new Error('Project not found');
+            }
 
-        const currentTags = project.tags ?? [];
-        const newTags = currentTags.includes(input.tag)
-            ? currentTags
-            : [...currentTags, input.tag];
+            const currentTags = normalizeTags(project.tags);
+            const newTags = currentTags.includes(input.tag)
+                ? currentTags
+                : [...currentTags, input.tag];
 
-        await ctx.db.update(projects).set({
-            tags: newTags,
-            updatedAt: new Date(),
-        }).where(eq(projects.id, input.projectId));
+            await ctx.db.update(projects).set({
+                    tags: newTags,
+                    updatedAt: new Date(),
+                }).where(eq(projects.id, input.projectId));
 
-        return { success: true, tags: newTags };
-    }),
+            return { success: true, tags: newTags };
+        }),
     removeTag: protectedProcedure.input(z.object({
-        projectId: z.string(),
-        tag: z.string(),
-    })).mutation(async ({ ctx, input }) => {
-        await verifyProjectAccess(ctx.db, ctx.user.id, input.projectId);
-        const project = await ctx.db.query.projects.findFirst({
-            where: eq(projects.id, input.projectId),
-        });
+                projectId: z.string(),
+                tag: z.string(),
+        })).mutation(async ({ ctx, input }) => {
+            await verifyProjectAccess(ctx.db, ctx.user.id, input.projectId);
+            const project = await ctx.db.query.projects.findFirst({
+                where: eq(projects.id, input.projectId),
+            });
 
-        if (!project) {
-            throw new Error('Project not found');
-        }
+            if (!project) {
+                throw new Error('Project not found');
+            }
 
-        const currentTags = project.tags ?? [];
-        const newTags = currentTags.filter(tag => tag !== input.tag);
+            const currentTags = normalizeTags(project.tags);
+            const newTags = currentTags.filter((tag) => tag !== input.tag);
 
-        await ctx.db.update(projects).set({
-            tags: newTags,
-            updatedAt: new Date(),
-        }).where(eq(projects.id, input.projectId));
+            await ctx.db.update(projects).set({
+                    tags: newTags,
+                    updatedAt: new Date(),
+                }).where(eq(projects.id, input.projectId));
 
-        return { success: true, tags: newTags };
-    }),
+            return { success: true, tags: newTags };
+        }),
 });

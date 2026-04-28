@@ -19,10 +19,10 @@ function isLocalModeEnabled() {
     );
 }
 
-function hasUsableCodesandboxKey() {
-    const key = process.env.CSB_API_KEY?.trim();
-    return !!key && !key.startsWith('local-');
-}
+// function hasUsableCodesandboxKey() {
+//     const key = process.env.CSB_API_KEY?.trim();
+//     return !!key && !key.startsWith('local-');
+// }
 
 function createLocalSandbox(port: number) {
     const sandboxId = `local-${randomUUID()}`;
@@ -73,7 +73,7 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input, ctx }) => {
-            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+            if (isLocalModeEnabled()) {
                 return createLocalSandbox(3000);
             }
 
@@ -128,7 +128,7 @@ export const sandboxRouter = createTRPCRouter({
         .query(async ({ input }) => {
             const previewUrl = getSandboxPreviewUrl(input.sandboxId, 3000);
 
-            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+            if (isLocalModeEnabled()) {
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 2000);
 
@@ -206,7 +206,7 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
-            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+            if (isLocalModeEnabled()) {
                 return createLocalSandbox(input.sandbox.port);
             }
 
@@ -275,7 +275,7 @@ export const sandboxRouter = createTRPCRouter({
             }),
         )
         .mutation(async ({ input }) => {
-            if (isLocalModeEnabled() && !hasUsableCodesandboxKey()) {
+            if (isLocalModeEnabled()) {
                 return createLocalSandbox(3000);
             }
 

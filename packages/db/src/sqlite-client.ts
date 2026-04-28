@@ -15,7 +15,6 @@ function patchDefaults(obj: Record<string, any>, id: string, now: Date): Record<
         startedAt: obj.startedAt ?? now,
         endedAt: obj.endedAt ?? now,
         timestamp: obj.timestamp ?? now,
-        // type: obj.type ?? 'root',
         ...obj,
     };
 }

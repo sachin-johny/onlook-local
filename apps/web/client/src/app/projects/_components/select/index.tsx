@@ -176,8 +176,8 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                     return a.name.localeCompare(b.name);
                 case 'Date created':
                     return (
-                        new Date(a.metadata.createdAt).getTime() -
-                        new Date(b.metadata.createdAt).getTime()
+                        new Date(b.metadata.createdAt).getTime() -
+                        new Date(a.metadata.createdAt).getTime()
                     );
                 case 'Last viewed':
                 default:

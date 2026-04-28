@@ -21,11 +21,11 @@ interface NewProjectMenuProps {
 
 export const NewProjectMenu = observer(({ onShowCloneDialog }: NewProjectMenuProps) => {
     const editorEngine = useEditorEngine();
-    const { handleStartBlankProject, isCreatingProject } = useCreateBlankProject();
+    const { openNameDialog, isCreatingProject } = useCreateBlankProject();
     const t = useTranslations();
     const router = useRouter();
 
-    const handleStartBlankWithScreenshot = async () => {
+    const handleStartBlankWithScreenshot = () => {
         // Capture screenshot of current project before cleanup
         try {
             editorEngine.screenshot.captureScreenshot();
@@ -33,7 +33,7 @@ export const NewProjectMenu = observer(({ onShowCloneDialog }: NewProjectMenuPro
             console.error('Failed to capture screenshot:', error);
         }
 
-        await handleStartBlankProject();
+        openNameDialog();
     };
 
     return (

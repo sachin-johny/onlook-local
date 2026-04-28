@@ -16,19 +16,15 @@ const withTimeout = async <T,>(
     timeoutMessage: string,
 ): Promise<T> => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
+    
     const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-            reject(new Error(timeoutMessage));
-        }, timeoutMs);
+        timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
     });
 
     try {
         return await Promise.race([promise, timeoutPromise]);
     } finally {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
+        if (timeoutId) clearTimeout(timeoutId);
     }
 };
 
@@ -41,22 +37,30 @@ export function useCreateBlankProject() {
     const router = useRouter();
     const [isCreatingProject, setIsCreatingProject] = useState(false);
 
-    const handleStartBlankProject = async () => {
+    // ← NEW: name dialog state
+    const [isNameDialogOpen, setIsNameDialogOpen] = useState(false);
+
+    const openNameDialog = () => {
         if (isLocalMode && userError) {
             toast.error('Local database is unavailable', {
                 description: 'Start your local backend database and try again.',
             });
             return;
         }
-
         const userId = user?.id ?? (isLocalMode ? LOCAL_DEV_USER_ID : null);
         if (!userId) {
-            // Store the return URL and open auth modal
-            await localforage.setItem(LocalForageKeys.RETURN_URL, window.location.pathname);
+            localforage.setItem(LocalForageKeys.RETURN_URL, window.location.pathname);
             setIsAuthModalOpen(true);
             return;
         }
+        setIsNameDialogOpen(true);
+    };
 
+    const handleStartBlankProject = async (projectName: string) => {
+        const userId = user?.id ?? (isLocalMode ? LOCAL_DEV_USER_ID : null);
+        if (!userId) return;
+
+        setIsNameDialogOpen(false);
         setIsCreatingProject(true);
         try {
             // Create a blank project using the BLANK template
@@ -64,7 +68,7 @@ export function useCreateBlankProject() {
                 forkSandbox({
                     sandbox: SandboxTemplates[Templates.EMPTY_NEXTJS],
                     config: {
-                        title: `Blank project - ${userId}`,
+                        title: `${projectName} - ${userId}`,
                         tags: ['blank', userId],
                     },
                 }),
@@ -75,9 +79,9 @@ export function useCreateBlankProject() {
             const newProject = await withTimeout(
                 createProject({
                     project: {
-                        name: 'New Project',
-                        description: 'Your new blank project',
-                        tags: ['blank'],
+                        name: projectName,
+                        description: '',
+                        tags: [],
                     },
                     sandboxId,
                     sandboxUrl: previewUrl,
@@ -93,20 +97,26 @@ export function useCreateBlankProject() {
         } catch (error) {
             console.error('Error creating blank project:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
-
             if (errorMessage.includes('502') || errorMessage.includes('sandbox')) {
                 toast.error('Sandbox service temporarily unavailable', {
-                    description: 'Please try again in a few moments. Our servers may be experiencing high load.',
+                    description: 'Please try again in a few moments.',
                 });
             } else {
                 toast.error('Failed to create project', {
                     description: errorMessage,
                 });
             }
-        } finally {
-            setIsCreatingProject(false);
-        }
+        } 
+        // finally {
+        //     setIsCreatingProject(false);
+        // }
     };
 
-    return { handleStartBlankProject, isCreatingProject };
+    return {
+        openNameDialog,
+        handleStartBlankProject,
+        isCreatingProject,
+        isNameDialogOpen,
+        setIsNameDialogOpen,
+    };
 }

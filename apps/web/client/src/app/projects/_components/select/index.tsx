@@ -21,6 +21,9 @@ import { MasonryLayout } from './masonry-layout';
 import { ProjectCard } from './project-card';
 import { SquareProjectCard } from './square-project-card';
 
+import { CreateProjectDialog } from '../create-project-dialog';
+import { CreatingProjectOverlay } from '../creating-project-overlay';
+
 const STARRED_TEMPLATES_KEY = 'onlook_starred_templates';
 
 export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: string } = {}) => {
@@ -37,7 +40,8 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
     const { error: subscriptionError, refetch: refetchSubscription } =
         api.subscription.get.useQuery();
     const { mutateAsync: removeTag } = api.project.removeTag.useMutation();
-    const { handleStartBlankProject, isCreatingProject } = useCreateBlankProject();
+    // const { handleStartBlankProject, isCreatingProject } = useCreateBlankProject();
+    const {openNameDialog, handleStartBlankProject, isCreatingProject, isNameDialogOpen, setIsNameDialogOpen } = useCreateBlankProject();
     const backendError = userError ?? projectListError ?? subscriptionError;
 
     // Search and filters
@@ -257,7 +261,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                     </div>
                     <div className="flex justify-center">
                         <Button
-                            onClick={handleStartBlankProject}
+                            onClick={openNameDialog}
                             disabled={isCreatingProject}
                             variant="default"
                         >
@@ -334,7 +338,7 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                                         layout
                                     >
                                         <button
-                                            onClick={handleStartBlankProject}
+                                            onClick={openNameDialog}
                                             disabled={isCreatingProject}
                                             className="border-border bg-secondary/40 hover:bg-secondary relative flex aspect-[4/2.8] w-full items-center justify-center rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
@@ -551,6 +555,12 @@ export const SelectProject = ({ externalSearchQuery }: { externalSearchQuery?: s
                     user={user}
                 />
             )}
+            <CreateProjectDialog
+                open={isNameDialogOpen}
+                onClose={() => setIsNameDialogOpen(false)}
+                onSubmit={handleStartBlankProject}
+            />
+            <CreatingProjectOverlay isVisible={isCreatingProject} />
         </div>
     );
 };

@@ -41,7 +41,8 @@ export class ScreenshotManager {
             }
             const result = await api.project.captureScreenshot.mutate({ projectId: this.editorEngine.projectId });
             if (!result || !result.success) {
-                throw new Error('Failed to capture screenshot');
+                console.warn('Screenshot capture skipped — preview may be unreachable');
+                return;
             }
             this.lastScreenshotAt = new Date();
         } catch (error) {

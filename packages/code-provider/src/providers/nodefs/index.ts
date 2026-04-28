@@ -988,7 +988,7 @@ export class NodeFsTask extends ProviderTask {
             this.emit(
                 `[nodefs:${this.sandboxId}] Preview is unreachable at ${this.previewUrl}. Start your imported app dev server and retry.`,
             );
-            throw new Error(`Preview is unreachable at ${this.previewUrl}`);
+            return;
         }
 
         this.emit(`[nodefs:${this.sandboxId}] Preview is reachable at ${this.previewUrl}`);

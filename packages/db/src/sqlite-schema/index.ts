@@ -233,6 +233,10 @@ export const projectCustomDomains = sqliteTable('project_custom_domains', {
 export const customDomains = sqliteTable('custom_domains', {
     id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
     domain: text('domain'),
+    apexDomain: text('apex_domain'),
+    verified: integer('verified', { mode: 'boolean' }).default(false),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
 export const customDomainVerification = sqliteTable('custom_domain_verification', {
@@ -240,6 +244,12 @@ export const customDomainVerification = sqliteTable('custom_domain_verification'
     customDomainId: text('custom_domain_id'),
     projectId: text('project_id'),
     status: text('status'),
+    fullDomain: text('full_domain'),
+    freestyleVerificationId: text('freestyle_verification_id'),
+    txtRecord: text('txt_record', { mode: 'json' }),
+    aRecords: text('a_records', { mode: 'json' }).$defaultFn(() => []),
+    createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
 export const deployments = sqliteTable('deployments', {
@@ -449,6 +459,13 @@ export const projectCustomDomainsRelations = relations(projectCustomDomains, ({ 
     project: one(projects, {
         fields: [projectCustomDomains.projectId],
         references: [projects.id],
+    }),
+}));
+
+export const customDomainVerificationRelations = relations(customDomainVerification, ({ one }) => ({
+    customDomain: one(customDomains, {
+        fields: [customDomainVerification.customDomainId],
+        references: [customDomains.id],
     }),
 }));
 

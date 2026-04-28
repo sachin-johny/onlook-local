@@ -324,15 +324,25 @@ const CREATE_TABLES_SQL = `
     -- Custom domains (stub)
     CREATE TABLE IF NOT EXISTS custom_domains (
         id TEXT PRIMARY KEY,
-        domain TEXT
+        domain TEXT,
+        apex_domain TEXT,
+        verified INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER DEFAULT (unixepoch()),
+        updated_at INTEGER DEFAULT (unixepoch())
     );
 
     -- Custom domain verification (stub)
     CREATE TABLE IF NOT EXISTS custom_domain_verification (
         id TEXT PRIMARY KEY,
-        custom_domain_id TEXT,
-        project_id TEXT,
-        status TEXT
+        custom_domain_id TEXT REFERENCES custom_domains(id),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        status TEXT DEFAULT 'pending',
+        full_domain TEXT,
+        freestyle_verification_id TEXT,
+        txt_record TEXT,
+        a_records TEXT DEFAULT '[]',
+        created_at INTEGER DEFAULT (unixepoch()),
+        updated_at INTEGER DEFAULT (unixepoch())
     );
 
     -- Deployments (stub)

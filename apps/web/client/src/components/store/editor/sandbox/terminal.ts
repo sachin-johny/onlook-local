@@ -47,6 +47,7 @@ export class CLISessionImpl implements CLISession {
         public readonly type: CLISessionType,
         private readonly provider: Provider,
         private readonly errorManager: ErrorManager,
+        private readonly terminalOverride?: ProviderTerminal,
     ) {
         this.id = uuidv4();
         this.terminal = null;
@@ -81,10 +82,16 @@ export class CLISessionImpl implements CLISession {
             this.xterm = this.createXTerm();
             this.xterm.loadAddon(this.fitAddon);
 
-            const { terminal } = await this.provider.createTerminal({});
-            if (!terminal) {
-                console.error('Failed to create terminal');
-                return;
+            let terminal: ProviderTerminal;
+            if (this.terminalOverride) {
+                terminal = this.terminalOverride;
+            } else {
+                const result = await this.provider.createTerminal({});
+                if (!result.terminal) {
+                    console.error('Failed to create terminal');
+                    return;
+                }
+                terminal = result.terminal;
             }
             this.terminal = terminal;
             terminal.onOutput((data: string) => {

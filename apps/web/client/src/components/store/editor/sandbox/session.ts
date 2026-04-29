@@ -5,6 +5,7 @@ import type { Branch } from '@onlook/models';
 import { makeAutoObservable } from 'mobx';
 import type { ErrorManager } from '../error';
 import { CLISessionImpl, CLISessionType, type CLISession, type TerminalSession } from './terminal';
+import { LocalPtyTerminal } from '@/services/local-pty-terminal';
 
 export class SessionManager {
     provider: Provider | null = null;
@@ -56,7 +57,7 @@ export class SessionManager {
                 });
             }
             this.provider = provider;
-            await this.createTerminalSessions(provider);
+            await this.createTerminalSessions(provider, sandboxId);
         };
 
         let lastError: Error | null = null;
@@ -112,7 +113,7 @@ export class SessionManager {
         return this.terminalSessions.get(id) as TerminalSession | undefined;
     }
 
-    async createTerminalSessions(provider: Provider) {
+    async createTerminalSessions(provider: Provider, sandboxId?: string) {
         const task = new CLISessionImpl(
             'server',
             CLISessionType.TASK,
@@ -120,11 +121,18 @@ export class SessionManager {
             this.errorManager,
         );
         this.terminalSessions.set(task.id, task);
+
+        // In local mode, use LocalPtyTerminal instead of the NodeFs stub
+        const terminalOverride = isLocalModeEnabled() && sandboxId
+            ? new LocalPtyTerminal(sandboxId, `./local-projects/${sandboxId}`)
+            : undefined;
+
         const terminal = new CLISessionImpl(
             'terminal',
             CLISessionType.TERMINAL,
             provider,
             this.errorManager,
+            terminalOverride,
         );
 
         this.terminalSessions.set(terminal.id, terminal);

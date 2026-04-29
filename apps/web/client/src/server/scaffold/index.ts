@@ -1,4 +1,3 @@
-import { exec } from 'node:child_process';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NEXTJS_TEMPLATE } from './template';
@@ -13,7 +12,8 @@ export function getLocalProjectsDir(): string {
 
 /**
  * Scaffolds a new Next.js + Tailwind project on disk.
- * Creates directories and writes all template files, then runs `bun install`.
+ * Creates directories and writes all template files.
+ * Dependencies must be installed separately (e.g., via the terminal).
  */
 export async function scaffoldProject(
     projectDir: string,
@@ -31,13 +31,6 @@ export async function scaffoldProject(
             await writeFile(filePath, finalContent, 'utf-8');
         }),
     );
-
-    // Run bun install asynchronously
-    await new Promise<void>((resolve, reject) => {
-        exec('bun install', { cwd: projectDir, timeout: 60_000 }, (err) => {
-            err ? reject(err) : resolve();
-        });
-    });
 }
 
 /**

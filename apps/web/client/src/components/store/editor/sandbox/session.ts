@@ -177,6 +177,13 @@ export class SessionManager {
 
     async reconnect(sandboxId: string, userId?: string) {
         try {
+            // In local mode, the PTY WebSocket has its own reconnection logic
+            // and the filesystem provider doesn't need restarting. Skip the
+            // expensive reconnect flow that would kill terminal sessions.
+            if (isLocalModeEnabled()) {
+                return;
+            }
+
             if (!this.provider) {
                 console.error('No provider found in reconnect');
                 return;

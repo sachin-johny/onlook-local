@@ -15,6 +15,14 @@ export class LocalPtyTerminal extends ProviderTerminal {
     ) {
         super();
         this.client = new PtyClient(sandboxId);
+
+        // Bridge PtyClient output to our subscribers immediately.
+        // This must be set up before connect() so no output is lost.
+        this.client.onOutput((data: string) => {
+            for (const cb of this.outputCallbacks) {
+                cb(data);
+            }
+        });
     }
 
     get id(): string {
@@ -29,13 +37,6 @@ export class LocalPtyTerminal extends ProviderTerminal {
         try {
             await this.client.connect();
             this.connected = true;
-
-            this.client.onOutput((data: string) => {
-                for (const cb of this.outputCallbacks) {
-                    cb(data);
-                }
-            });
-
             return '';
         } catch (err) {
             const msg = `[pty] Failed to connect: ${err instanceof Error ? err.message : String(err)}`;

@@ -16,6 +16,7 @@
   },
   "type": "module",
   "scripts": {
+    "postinstall": "node -e \"const p=require('path');const f=p.join(require.resolve('node-pty'),'..','prebuilds',process.platform+'-'+process.arch,'spawn-helper');try{require('fs').chmodSync(f,0o755)}catch{}\"",
     "dev": "next dev --turbo",
     "lint": "eslint . --max-warnings 0",
     "format": "eslint --fix .",

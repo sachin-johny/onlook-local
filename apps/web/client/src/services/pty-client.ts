@@ -7,12 +7,28 @@ export class PtyClient {
 
     constructor(private readonly sandboxId: string) {}
 
+    /** Register an output handler. Safe to call before connect(). */
+    onOutput(callback: (data: string) => void): () => void {
+        this.outputCallbacks.add(callback);
+        return () => {
+            this.outputCallbacks.delete(callback);
+        };
+    }
+
     connect(): Promise<void> {
         return new Promise((resolve, reject) => {
             const url = `ws://127.0.0.1:${PTY_PORT}?sandboxId=${encodeURIComponent(this.sandboxId)}`;
-            this.ws = new WebSocket(url);
+            try {
+                this.ws = new WebSocket(url);
+            } catch (err) {
+                reject(new Error(`Failed to create WebSocket: ${err instanceof Error ? err.message : String(err)}`));
+                return;
+            }
 
-            this.ws.onopen = () => resolve();
+            this.ws.onopen = () => {
+                console.log('[pty-client] connected to', url);
+                resolve();
+            };
 
             this.ws.onmessage = (event) => {
                 try {
@@ -28,10 +44,12 @@ export class PtyClient {
             };
 
             this.ws.onerror = (event) => {
-                reject(new Error(`PTY WebSocket error: ${event.type}`));
+                console.error('[pty-client] WebSocket error', event);
+                reject(new Error(`PTY WebSocket error`));
             };
 
-            this.ws.onclose = () => {
+            this.ws.onclose = (event) => {
+                console.log('[pty-client] closed', event.code, event.reason);
                 this.ws = null;
             };
         });
@@ -47,13 +65,6 @@ export class PtyClient {
         if (this.ws?.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
         }
-    }
-
-    onOutput(callback: (data: string) => void): () => void {
-        this.outputCallbacks.add(callback);
-        return () => {
-            this.outputCallbacks.delete(callback);
-        };
     }
 
     kill(): void {

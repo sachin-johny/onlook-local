@@ -66,3 +66,6 @@ onlook-local.db-journal
 
 # MCP config
 .mcp.json
+
+# local project folder
+apps/web/client/local-projects

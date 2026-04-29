@@ -12,10 +12,9 @@ export class LocalPtyTerminal extends ProviderTerminal {
 
     constructor(
         private readonly sandboxId: string,
-        private readonly cwd: string,
     ) {
         super();
-        this.client = new PtyClient(cwd);
+        this.client = new PtyClient(sandboxId);
     }
 
     get id(): string {

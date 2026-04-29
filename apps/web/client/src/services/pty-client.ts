@@ -5,11 +5,11 @@ export class PtyClient {
     private ws: WebSocket | null = null;
     private outputCallbacks = new Set<(data: string) => void>();
 
-    constructor(private readonly cwd: string) {}
+    constructor(private readonly sandboxId: string) {}
 
     connect(): Promise<void> {
         return new Promise((resolve, reject) => {
-            const url = `ws://127.0.0.1:${PTY_PORT}?cwd=${encodeURIComponent(this.cwd)}`;
+            const url = `ws://127.0.0.1:${PTY_PORT}?sandboxId=${encodeURIComponent(this.sandboxId)}`;
             this.ws = new WebSocket(url);
 
             this.ws.onopen = () => resolve();

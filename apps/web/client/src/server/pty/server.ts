@@ -1,7 +1,9 @@
+import { join } from 'node:path';
 import type { IPty } from 'node-pty';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { PTY_PORT } from './config';
 import { killAll, killProcess, spawnTerminal } from './process-manager';
+import { getLocalProjectsDir } from '../scaffold';
 
 interface PtyMessage {
     type: 'input' | 'resize';
@@ -21,14 +23,16 @@ export function startPtyServer(): void {
     wss.on('connection', (ws: WebSocket, req) => {
         const socketId = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
 
-        // Expect cwd as a query parameter: ws://localhost:PORT?cwd=/path/to/project
+        // Expect sandboxId as a query parameter — server builds the absolute cwd
         const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-        const cwd = url.searchParams.get('cwd');
+        const sandboxId = url.searchParams.get('sandboxId');
 
-        if (!cwd) {
-            ws.close(4001, 'Missing cwd parameter');
+        if (!sandboxId) {
+            ws.close(4001, 'Missing sandboxId parameter');
             return;
         }
+
+        const cwd = join(getLocalProjectsDir(), sandboxId);
 
         let pty: IPty;
         try {

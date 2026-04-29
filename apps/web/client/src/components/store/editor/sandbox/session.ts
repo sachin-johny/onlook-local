@@ -114,6 +114,15 @@ export class SessionManager {
     }
 
     async createTerminalSessions(provider: Provider, sandboxId?: string) {
+        // Clear any existing sessions to avoid duplicates on reconnect
+        this.terminalSessions.forEach((s) => {
+            if (s.type === CLISessionType.TERMINAL) {
+                s.terminal?.kill();
+                s.xterm?.dispose();
+            }
+        });
+        this.terminalSessions.clear();
+
         const task = new CLISessionImpl(
             'server',
             CLISessionType.TASK,
@@ -124,7 +133,7 @@ export class SessionManager {
 
         // In local mode, use LocalPtyTerminal instead of the NodeFs stub
         const terminalOverride = isLocalModeEnabled() && sandboxId
-            ? new LocalPtyTerminal(sandboxId, `./local-projects/${sandboxId}`)
+            ? new LocalPtyTerminal(sandboxId)
             : undefined;
 
         const terminal = new CLISessionImpl(

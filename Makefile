@@ -1,4 +1,4 @@
-SHELL := /bin/zsh
+SHELL := /bin/bash
 
 ENV_FILE := apps/web/client/.env
 ENV_LOCAL_FILE := apps/web/client/.env.local
@@ -14,16 +14,7 @@ help:
 	@echo "  make stop-local         # Stop dev app, then stop Supabase"
 
 ensure-env:
-	@if [ ! -f "$(ENV_FILE)" ]; then \
-		if [ -f "$(ENV_LOCAL_FILE)" ]; then \
-			cp "$(ENV_LOCAL_FILE)" "$(ENV_FILE)"; \
-		elif [ -f "$(ENV_EXAMPLE_FILE)" ]; then \
-			cp "$(ENV_EXAMPLE_FILE)" "$(ENV_FILE)"; \
-		else \
-			echo "Missing env file. Create $(ENV_FILE) manually."; \
-			exit 1; \
-		fi; \
-	fi
+	@bun -e "const fs = require('node:fs'); const envPath = 'apps/web/client/.env'; if (fs.existsSync(envPath)) process.exit(0); const source = ['apps/web/client/.env.local', 'apps/web/client/.env.example'].find(f => fs.existsSync(f)); if (!source) { console.error('Missing env file. Create apps/web/client/.env manually.'); process.exit(1); } fs.copyFileSync(source, envPath); console.log('Created ' + envPath + ' from ' + source)"
 
 docker-check:
 	@command -v docker >/dev/null 2>&1 || { echo "Docker CLI not found."; exit 1; }
@@ -47,8 +38,7 @@ stop-local:
 	@$(MAKE) backend-stop
 
 start-local-sqlite: ensure-env
-	@ONLOOK_LOCAL_MODE=true NEXT_PUBLIC_ONLOOK_LOCAL_MODE=true SKIP_ENV_VALIDATION=true bun run dev
+	@bun -e "Bun.spawnSync(['bun', 'run', 'dev'], { env: { ...Bun.env, ONLOOK_LOCAL_MODE: 'true', NEXT_PUBLIC_ONLOOK_LOCAL_MODE: 'true', SKIP_ENV_VALIDATION: 'true' }, stdio: ['inherit', 'inherit', 'inherit'] })"
 
 local-db-reset:
-	@rm -f ./onlook-local.db
-	@echo "SQLite database deleted. It will be re-created on next start."
+	@bun -e "const fs = require('node:fs'); fs.rmSync('apps/web/client/onlook-local.db', { force: true }); console.log('SQLite database deleted. It will be re-created on next start.')"

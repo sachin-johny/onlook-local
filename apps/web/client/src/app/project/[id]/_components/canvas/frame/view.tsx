@@ -37,31 +37,67 @@ const getSafeFallbackForMethod = async (method: string) => {
     return undefined;
 };
 
-const NATIVE_DOM_METHODS = new Set([
-    'getBoundingClientRect', 'getClientRects', 'querySelector', 'querySelectorAll',
-    'getAttribute', 'setAttribute', 'removeAttribute', 'hasAttribute',
-    'addEventListener', 'removeEventListener', 'dispatchEvent',
-    'focus', 'blur', 'click', 'scrollIntoView', 'scrollIntoViewIfNeeded',
-    'matches', 'closest', 'contains', 'getComputedStyle',
-]);
+const CHILD_METHOD_NAMES: (keyof PromisifiedPendpalChildMethods)[] = [
+    'processDom',
+    'getElementAtLoc',
+    'getElementByDomId',
+    'setFrameId',
+    'setBranchId',
+    'getElementIndex',
+    'getComputedStyleByDomId',
+    'updateElementInstance',
+    'getFirstOnlookElement',
+    'setElementType',
+    'getElementType',
+    'getParentElement',
+    'getChildrenCount',
+    'getOffsetParent',
+    'getActionLocation',
+    'getActionElement',
+    'getInsertLocation',
+    'getRemoveAction',
+    'getTheme',
+    'setTheme',
+    'startDrag',
+    'drag',
+    'dragAbsolute',
+    'endDragAbsolute',
+    'endDrag',
+    'endAllDrag',
+    'startEditingText',
+    'editText',
+    'stopEditingText',
+    'updateStyle',
+    'insertElement',
+    'removeElement',
+    'moveElement',
+    'groupElements',
+    'ungroupElements',
+    'insertImage',
+    'removeImage',
+    'isChildTextEditable',
+    'handleBodyReady',
+    'captureScreenshot',
+    'buildLayerTree',
+];
 
-const createSafeFrameView = <T extends object>(base: T): T & PromisifiedPendpalChildMethods => {
-    return new Proxy(base as T & PromisifiedPendpalChildMethods, {
-        get(target, prop: string | symbol) {
-            if (typeof prop === 'symbol') return undefined;
-
-            const existing = Reflect.get(target, prop);
-            if (existing !== undefined) {
-                // Bind native DOM methods to the target so `this` is the real element
-                if (typeof existing === 'function' && NATIVE_DOM_METHODS.has(String(prop))) {
-                    return existing.bind(target);
-                }
-                return existing;
-            }
-
-            return async () => getSafeFallbackForMethod(String(prop));
-        },
-    });
+/**
+ * Attaches penpal child methods (or safe stubs for not-yet-connected frames) directly
+ * onto the iframe element. The element must stay a real DOM element — overlay math
+ * runs `getComputedStyle` on it, which fails browser brand checks on Proxy wrappers.
+ */
+const attachFrameViewMethods = (
+    target: HTMLIFrameElement,
+    methods: Partial<PromisifiedPendpalChildMethods> = {},
+): HTMLIFrameElement & PromisifiedPendpalChildMethods => {
+    for (const name of CHILD_METHOD_NAMES) {
+        if (!(name in target)) {
+            Object.assign(target, {
+                [name]: async () => getSafeFallbackForMethod(String(name)),
+            });
+        }
+    }
+    return Object.assign(target, methods) as HTMLIFrameElement & PromisifiedPendpalChildMethods;
 };
 
 interface FrameViewProps extends IframeHTMLAttributes<HTMLIFrameElement> {
@@ -276,14 +312,13 @@ export const FrameComponent = observer(
                     console.error(`${PENPAL_PARENT_CHANNEL} (${frame.id}) - Iframe - Not found`);
                     // Return safe fallback with no-op methods and safe defaults
                     const fallbackElement = document.createElement('iframe');
-                    const safeFallback = Object.assign(fallbackElement, {
+                    return attachFrameViewMethods(Object.assign(fallbackElement, {
                         // Custom sync methods with safe no-op implementations
                         supportsOpenDevTools: () => false,
                         setZoomLevel: () => { },
                         reload: () => { },
                         isLoading: () => false,
-                    });
-                    return createSafeFrameView(safeFallback) as IFrameView;
+                    })) as IFrameView;
                 }
 
                 const syncMethods = {
@@ -302,15 +337,12 @@ export const FrameComponent = observer(
                     console.warn(
                         `${PENPAL_PARENT_CHANNEL} (${frame.id}) - Failed to setup penpal connection: iframeRemote is null`,
                     );
-                    const pendingView = createSafeFrameView(Object.assign(iframe, syncMethods)) as IFrameView;
+                    const pendingView = attachFrameViewMethods(Object.assign(iframe, syncMethods)) as IFrameView;
                     editorEngine.frames.registerView(frame, pendingView);
                     return pendingView;
                 }
 
-                const connectedView = createSafeFrameView(Object.assign(iframe, {
-                    ...syncMethods,
-                    ...remoteMethods,
-                })) as IFrameView;
+                const connectedView = attachFrameViewMethods(Object.assign(iframe, syncMethods), remoteMethods) as IFrameView;
 
                 editorEngine.frames.registerView(frame, connectedView);
                 return connectedView;

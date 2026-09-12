@@ -45,6 +45,17 @@ export interface NodeFsTreeOutput {
     entries: NodeFsTransportEntry[];
 }
 
+export interface NodeFsDevServerStatus {
+    running: boolean;
+    port: number | null;
+    pid: number | null;
+    command: string | null;
+    startedAt: number | null;
+    exitCode: number | null;
+    /** Capped tail of the server's combined stdout/stderr, oldest first. */
+    logs: string[];
+}
+
 export interface NodeFsTransport {
     /** Every file and directory under the sandbox root, ignored directories pruned. */
     listTree(sandboxId: string): Promise<NodeFsTreeOutput>;
@@ -65,4 +76,8 @@ export interface NodeFsTransport {
         recursive?: boolean,
         overwrite?: boolean,
     ): Promise<void>;
+    /** Start the imported project's dev server (no-op when already running). */
+    serverStart(sandboxId: string, port?: number): Promise<NodeFsDevServerStatus>;
+    serverStop(sandboxId: string): Promise<NodeFsDevServerStatus>;
+    serverStatus(sandboxId: string): Promise<NodeFsDevServerStatus>;
 }

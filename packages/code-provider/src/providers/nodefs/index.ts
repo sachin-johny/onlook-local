@@ -261,6 +261,7 @@ export class NodeFsProvider extends Provider {
     private readonly options: NodeFsProviderOptions;
     private readonly sandboxId: string;
     private project: NodeFsProjectState;
+    private devTask: NodeFsTask | null = null;
 
     constructor(options: NodeFsProviderOptions) {
         super();
@@ -857,8 +858,17 @@ export class NodeFsProvider extends Provider {
     }
 
     async getTask(input: GetTaskInput): Promise<GetTaskOutput> {
+        // One shared dev-task instance per provider: the terminal session and
+        // restartDevServer() must see the same output stream.
+        if (!this.devTask) {
+            this.devTask = new NodeFsTask(
+                this.sandboxId,
+                this.project.previewUrl,
+                this.requireTransport(),
+            );
+        }
         return {
-            task: new NodeFsTask(this.sandboxId, this.project.previewUrl),
+            task: this.devTask,
         };
     }
 
@@ -1057,10 +1067,12 @@ export class NodeFsTerminal extends ProviderTerminal {
 export class NodeFsTask extends ProviderTask {
     private readonly taskId: string;
     private callbacks = new Set<(data: string) => void>();
+    private emittedLogCount = 0;
 
     constructor(
         private readonly sandboxId: string,
         private readonly previewUrl: string,
+        private readonly transport: NodeFsTransport,
     ) {
         super();
         this.taskId = `${sandboxId}-dev`;
@@ -1075,35 +1087,58 @@ export class NodeFsTask extends ProviderTask {
     }
 
     get command(): string {
-        return 'npm run dev';
+        return 'dev';
     }
 
-    open(): Promise<string> {
-        const output = `[nodefs:${this.sandboxId}] Local preview expected at ${this.previewUrl}`;
-        this.emit(output);
-        return Promise.resolve(output);
+    /**
+     * Status report for the terminal tab. The server is started via `restart()`
+     * (the Restart Sandbox button) — opening the terminal never spawns processes.
+     */
+    async open(): Promise<string> {
+        let output = `[nodefs:${this.sandboxId}] Local preview expected at ${this.previewUrl}`;
+        try {
+            const status = await this.transport.serverStatus(this.sandboxId);
+            if (status.running) {
+                output = `[nodefs:${this.sandboxId}] Dev server running (pid ${status.pid ?? '?'}): ${status.command} → ${this.previewUrl}`;
+            } else if (status.exitCode !== null) {
+                output += `\n[nodefs:${this.sandboxId}] Dev server exited (code ${status.exitCode}). Use restart to start it.`;
+            } else {
+                output += `\n[nodefs:${this.sandboxId}] Dev server is not running. Use restart to start it.`;
+            }
+            this.emit(output);
+            this.emitLogTail(status.logs);
+            return output;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.emit(`${output}\n[nodefs:${this.sandboxId}] Failed to query dev server status: ${message}`);
+            return output;
+        }
     }
 
     run(): Promise<void> {
-        this.emit(`[nodefs:${this.sandboxId}] Run requested for ${this.command}`);
-        return Promise.resolve();
+        return this.restart();
     }
 
+    /** Start the dev server (stopping any running instance first), then wait until it serves. */
     async restart(): Promise<void> {
-        const reachable = await isPreviewReachable(this.previewUrl);
-        if (!reachable) {
-            this.emit(
-                `[nodefs:${this.sandboxId}] Preview is unreachable at ${this.previewUrl}. Start your imported app dev server and retry.`,
-            );
-            throw new Error(`Preview is unreachable at ${this.previewUrl}`);
+        const status = await this.transport.serverStatus(this.sandboxId);
+        if (status.running) {
+            this.emit(`[nodefs:${this.sandboxId}] Stopping the running dev server…`);
+            await this.transport.serverStop(this.sandboxId);
+            this.emittedLogCount = 0;
         }
 
-        this.emit(`[nodefs:${this.sandboxId}] Preview is reachable at ${this.previewUrl}`);
+        this.emit(`[nodefs:${this.sandboxId}] Starting dev server at ${this.previewUrl}…`);
+        const started = await this.transport.serverStart(this.sandboxId, this.previewPort());
+        this.emit(`[nodefs:${this.sandboxId}] ${started.command} (pid ${started.pid ?? '?'})`);
+        await this.waitForReady();
     }
 
     stop(): Promise<void> {
-        this.emit(`[nodefs:${this.sandboxId}] Stop requested`);
-        return Promise.resolve();
+        return this.transport.serverStop(this.sandboxId).then((status) => {
+            this.emit(`[nodefs:${this.sandboxId}] Dev server stopped`);
+            this.emitLogTail(status.logs);
+        });
     }
 
     onOutput(callback: (data: string) => void): () => void {
@@ -1111,6 +1146,50 @@ export class NodeFsTask extends ProviderTask {
         return () => {
             this.callbacks.delete(callback);
         };
+    }
+
+    private previewPort(): number | undefined {
+        try {
+            const port = new URL(this.previewUrl).port;
+            return port ? Number(port) : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Stream log deltas into the terminal while polling until the preview answers.
+     * Cold `npm run dev` on a large project can take a while — allow 90s.
+     */
+    private async waitForReady(): Promise<void> {
+        const timeoutMs = 90_000;
+        const pollMs = 1_000;
+        const deadline = Date.now() + timeoutMs;
+
+        while (Date.now() < deadline) {
+            const status = await this.transport.serverStatus(this.sandboxId);
+            this.emitLogTail(status.logs);
+            if (status.exitCode !== null) {
+                throw new Error(`Dev server exited with code ${status.exitCode}`);
+            }
+            if (await isPreviewReachable(this.previewUrl)) {
+                this.emit(`[nodefs:${this.sandboxId}] Dev server is up at ${this.previewUrl}`);
+                return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+        }
+
+        throw new Error(
+            `Dev server did not become reachable at ${this.previewUrl} within ${timeoutMs / 1000}s`,
+        );
+    }
+
+    private emitLogTail(logs: string[]) {
+        const fresh = logs.slice(Math.min(this.emittedLogCount, logs.length));
+        for (const line of fresh) {
+            this.emit(line);
+        }
+        this.emittedLogCount = logs.length;
     }
 
     private emit(data: string) {

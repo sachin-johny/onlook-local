@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
     bindLocalSandbox,
     copyEntry,
+    getSandboxDevServerStatus,
     listDir,
     listTree,
     mkdirChain,
@@ -12,7 +13,9 @@ import {
     removeEntry,
     renameEntry,
     resolveLocalRoot,
+    startSandboxDevServer,
     statEntry,
+    stopSandboxDevServer,
     unbindLocalSandbox,
     validateLocalPath,
     writeFileAt,
@@ -163,4 +166,17 @@ export const localFsRouter = createTRPCRouter({
             );
             return {};
         }),
+
+    // Dev-server lifecycle for the bound local folder (local import preview).
+    serverStart: localFsProcedure
+        .input(sandboxIdSchema.extend({ port: z.number().int().positive().optional() }))
+        .mutation(({ input }) => startSandboxDevServer(input.sandboxId, input.port)),
+
+    serverStop: localFsProcedure
+        .input(sandboxIdSchema)
+        .mutation(({ input }) => stopSandboxDevServer(input.sandboxId)),
+
+    serverStatus: localFsProcedure
+        .input(sandboxIdSchema)
+        .query(({ input }) => getSandboxDevServerStatus(input.sandboxId)),
 });

@@ -10,6 +10,7 @@ import type {
 } from '@onlook/code-provider';
 import { BINARY_EXTENSIONS, IGNORED_UPLOAD_DIRECTORIES } from '@onlook/constants';
 import { eq } from 'drizzle-orm';
+import { devServerStatusAt, startDevServerAt, stopDevServerAt } from './dev-server';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -621,6 +622,20 @@ export async function copyEntry(
     }
 }
 
+// ─── Dev-server lifecycle (thin wrappers over the process manager) ──────────
+
+export async function startSandboxDevServer(sandboxId: string, port?: number) {
+    return startDevServerAt(await requireRoot(sandboxId), port);
+}
+
+export async function stopSandboxDevServer(sandboxId: string) {
+    return stopDevServerAt(await requireRoot(sandboxId));
+}
+
+export async function getSandboxDevServerStatus(sandboxId: string) {
+    return devServerStatusAt(await requireRoot(sandboxId));
+}
+
 // ─── Server-side transport (for provider instances inside the Next server) ───
 
 export function createServerNodeFsTransport(): NodeFsTransport {
@@ -636,5 +651,8 @@ export function createServerNodeFsTransport(): NodeFsTransport {
         mkdir: (sandboxId, dirPath) => mkdirChain(sandboxId, dirPath),
         copy: (sandboxId, sourcePath, targetPath, recursive, overwrite) =>
             copyEntry(sandboxId, sourcePath, targetPath, recursive, overwrite),
+        serverStart: (sandboxId, port) => startSandboxDevServer(sandboxId, port),
+        serverStop: (sandboxId) => stopSandboxDevServer(sandboxId),
+        serverStatus: (sandboxId) => getSandboxDevServerStatus(sandboxId),
     };
 }

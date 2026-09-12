@@ -66,6 +66,15 @@ export function createLocalFsHttpTransport(): NodeFsTransport {
         copy: async (sandboxId, sourcePath, targetPath, recursive, overwrite) => {
             await api.localFs.copy.mutate({ sandboxId, sourcePath, targetPath, recursive, overwrite });
         },
+        serverStart: async (sandboxId, port) => {
+            return await api.localFs.serverStart.mutate({ sandboxId, port });
+        },
+        serverStop: async (sandboxId) => {
+            return await api.localFs.serverStop.mutate({ sandboxId });
+        },
+        serverStatus: async (sandboxId) => {
+            return await api.localFs.serverStatus.query({ sandboxId });
+        },
     };
 }
 

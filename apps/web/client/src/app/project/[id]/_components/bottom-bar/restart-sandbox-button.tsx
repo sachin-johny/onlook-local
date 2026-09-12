@@ -144,6 +144,7 @@ export const RestartSandboxButton = observer(({
                 <button
                     onClick={handleRestartSandbox}
                     disabled={disabled}
+                    aria-label="Restart Sandbox"
                     className={cn(
                         "h-9 w-9 flex items-center justify-center rounded-md border border-transparent transition-colors",
                         hasSandboxError

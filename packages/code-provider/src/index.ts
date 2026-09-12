@@ -5,6 +5,7 @@ export * from './providers';
 export { CodesandboxProvider } from './providers/codesandbox';
 export { NodeFsProvider } from './providers/nodefs';
 export type {
+    NodeFsDevServerStatus,
     NodeFsListOutput,
     NodeFsReadManyOutput,
     NodeFsReadResult,

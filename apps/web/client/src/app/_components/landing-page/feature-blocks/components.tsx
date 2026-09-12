@@ -36,7 +36,7 @@ export function ComponentsBlock() {
                                                 <Icons.ArrowLeft className="w-1 h-1 text-foreground-primary" />
                                                 <div className="flex gap-0.5">
                                                     <div className="px-0.5 py-0.5 rounded-[1px] bg-zinc-800 text-white text-[3px]">
-                                                        {new Date().toLocaleString('default', { month: 'short' })}
+                                                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][new Date().getMonth()]}
                                                     </div>
                                                     <div className="px-0.5 py-0.5 rounded-[1px] bg-zinc-800 text-white text-[3px]">
                                                         {new Date().getFullYear()}
@@ -207,7 +207,7 @@ export function ComponentsBlock() {
                         <Icons.ArrowLeft className="w-4 h-4 text-foreground-primary" />
                             <div className="flex gap-1">
                                 <button className="px-2 py-0.5 rounded bg-zinc-900 text-foreground-primary text-xs flex items-center">
-                                    {new Date().toLocaleString('default', { month: 'short' })} 
+                                    {new Date().toLocaleString('en-US', { month: 'short' })}
                                     <svg width='8' height='8' className='ml-1'><path d='M2 3l2 2 2-2' stroke='white' strokeWidth='1' fill='none'/></svg>
                                 </button>
                                 <button className="px-2 py-0.5 rounded bg-zinc-900 text-foreground-primary text-xs flex items-center">

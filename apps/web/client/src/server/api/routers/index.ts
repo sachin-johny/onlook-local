@@ -4,6 +4,7 @@ export * from './domain';
 export * from './forward';
 export * from './github';
 export * from './image';
+export * from './local-fs';
 export * from './project';
 export * from './publish';
 export * from './subscription';

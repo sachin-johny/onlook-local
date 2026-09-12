@@ -5,6 +5,7 @@ import {
     frameRouter,
     githubRouter,
     invitationRouter,
+    localFsRouter,
     memberRouter,
     projectRouter,
     publishRouter,
@@ -40,6 +41,7 @@ export const appRouter = createTRPCRouter({
     subscription: subscriptionRouter,
     usage: usageRouter,
     publish: publishRouter,
+    localFs: localFsRouter,
 });
 
 // export type definition of API

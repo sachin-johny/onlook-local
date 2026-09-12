@@ -50,17 +50,29 @@ import {
     type WriteFileInput,
     type WriteFileOutput,
 } from '../../types';
+import type {
+    NodeFsReadResult,
+    NodeFsTransport,
+} from './transport';
+import { isBinaryFile } from '@onlook/utility';
 
 export interface NodeFsProviderOptions {
     sandboxId?: string;
     userId?: string;
     previewUrl?: string;
+    /**
+     * Disk I/O bridge. The provider itself runs in the browser and cannot touch the
+     * filesystem — callers inject a transport (tRPC-backed in the app, node:fs-backed
+     * on the server). Without one, file operations fail with a clear error.
+     */
+    transport?: NodeFsTransport;
 }
 
 interface NodeFsStoredFile {
     path: string;
-    content: string | Uint8Array;
+    content: string | Uint8Array | null;
     type: 'text' | 'binary';
+    size?: number;
 }
 
 interface NodeFsProjectState {
@@ -69,25 +81,16 @@ interface NodeFsProjectState {
     files: Map<string, NodeFsStoredFile>;
     watchers: Set<NodeFsFileWatcher>;
     previewUrl: string;
-}
-
-interface NodeFsPersistedFile {
-    path: string;
-    type: 'text' | 'binary';
-    content: string | number[];
-}
-
-interface NodeFsPersistedProjectState {
-    version: 1;
-    sandboxId: string;
-    previewUrl: string;
-    directories: string[];
-    files: NodeFsPersistedFile[];
+    hydrated: boolean;
 }
 
 const DEFAULT_PREVIEW_URL =
     process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL?.trim() || 'http://localhost:8084';
-const STORAGE_KEY_PREFIX = '__onlook_nodefs_project__';
+
+// Bulk hydration caps — mirrors the readMany limits in the localFs service.
+const SNAPSHOT_MAX_FILE_BYTES = 4 * 1024 * 1024;
+const SNAPSHOT_MAX_BATCH_BYTES = 3 * 1024 * 1024;
+const SNAPSHOT_MAX_BATCH_PATHS = 200;
 
 const toSandboxId = () => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -140,15 +143,18 @@ const toRelativePath = (path: string) => {
     return normalized.startsWith('/') ? normalized.slice(1) : normalized;
 };
 
-const cloneContent = (content: string | Uint8Array) => {
-    if (typeof content === 'string') {
+const cloneContent = (content: string | Uint8Array | null) => {
+    if (content === null || typeof content === 'string') {
         return content;
     }
 
     return new Uint8Array(content);
 };
 
-const contentToString = (content: string | Uint8Array) => {
+const contentToString = (content: string | Uint8Array | null) => {
+    if (content === null) {
+        return '';
+    }
     if (typeof content === 'string') {
         return content;
     }
@@ -160,143 +166,59 @@ const contentToString = (content: string | Uint8Array) => {
     }
 };
 
-const ensureParentDirectories = (project: NodeFsProjectState, path: string) => {
-    project.directories.add('/');
+const toBase64 = (content: string | Uint8Array): string => {
+    const bytes = typeof content === 'string' ? new TextEncoder().encode(content) : content;
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+};
+
+const fromBase64 = (value: string): Uint8Array => {
+    const binary = atob(value);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+};
+
+const decodeReadResult = (result: NodeFsReadResult): string | Uint8Array => {
+    if (result.encoding === 'base64') {
+        return fromBase64(result.content);
+    }
+    return result.content;
+};
+
+const byteLength = (content: string | Uint8Array | null) => {
+    if (content === null) {
+        return undefined;
+    }
+    return typeof content === 'string' ? content.length : content.byteLength;
+};
+
+const remapPath = (path: string, oldPath: string, newPath: string) => {
+    return path === oldPath ? newPath : `${newPath}${path.slice(oldPath.length)}`;
+};
+
+const ensureParentDirectories = (directories: Set<string>, path: string) => {
+    directories.add('/');
 
     let current = dirname(path);
     while (current !== '/') {
-        project.directories.add(current);
+        directories.add(current);
         current = dirname(current);
     }
 
-    project.directories.add('/');
+    directories.add('/');
 };
 
 const emitWatchEvent = async (project: NodeFsProjectState, event: WatchEvent) => {
     await Promise.all(
         Array.from(project.watchers).map((watcher) => watcher.emit(event)),
     );
-};
-
-const getStorageKey = (sandboxId: string) => `${STORAGE_KEY_PREFIX}:${sandboxId}`;
-
-const getBrowserStorage = () => {
-    try {
-        const maybeStorage = (globalThis as { localStorage?: unknown }).localStorage;
-        if (
-            maybeStorage &&
-            typeof maybeStorage === 'object' &&
-            'getItem' in maybeStorage &&
-            'setItem' in maybeStorage &&
-            'removeItem' in maybeStorage
-        ) {
-            return maybeStorage as {
-                getItem: (key: string) => string | null;
-                setItem: (key: string, value: string) => void;
-                removeItem: (key: string) => void;
-            };
-        }
-    } catch {
-        return null;
-    }
-
-    return null;
-};
-
-const persistProjectState = (project: NodeFsProjectState) => {
-    const storage = getBrowserStorage();
-    if (!storage) {
-        return;
-    }
-
-    const payload: NodeFsPersistedProjectState = {
-        version: 1,
-        sandboxId: project.sandboxId,
-        previewUrl: project.previewUrl,
-        directories: Array.from(project.directories),
-        files: Array.from(project.files.values()).map((file) => ({
-            path: file.path,
-            type: file.type,
-            content:
-                file.type === 'text'
-                    ? contentToString(file.content)
-                    : Array.from(file.content instanceof Uint8Array ? file.content : new TextEncoder().encode(file.content)),
-        })),
-    };
-
-    try {
-        storage.setItem(getStorageKey(project.sandboxId), JSON.stringify(payload));
-    } catch {
-        // Ignore storage quota and serialization failures.
-    }
-};
-
-const loadProjectState = (sandboxId: string): NodeFsProjectState | null => {
-    const storage = getBrowserStorage();
-    if (!storage) {
-        return null;
-    }
-
-    try {
-        const raw = storage.getItem(getStorageKey(sandboxId));
-        if (!raw) {
-            return null;
-        }
-
-        const parsed = JSON.parse(raw) as NodeFsPersistedProjectState;
-        if (parsed.version !== 1 || !Array.isArray(parsed.directories) || !Array.isArray(parsed.files)) {
-            return null;
-        }
-
-        const files = new Map<string, NodeFsStoredFile>();
-        for (const file of parsed.files) {
-            const normalizedPath = normalizePath(file.path);
-            if (file.type === 'text') {
-                files.set(normalizedPath, {
-                    path: normalizedPath,
-                    type: 'text',
-                    content: typeof file.content === 'string' ? file.content : '',
-                });
-                continue;
-            }
-
-            if (!Array.isArray(file.content)) {
-                continue;
-            }
-
-            files.set(normalizedPath, {
-                path: normalizedPath,
-                type: 'binary',
-                content: new Uint8Array(file.content),
-            });
-        }
-
-        const directories = new Set<string>(parsed.directories.map((dir) => normalizePath(dir)));
-        directories.add('/');
-
-        return {
-            sandboxId,
-            directories,
-            files,
-            watchers: new Set(),
-            previewUrl: parsed.previewUrl || DEFAULT_PREVIEW_URL,
-        };
-    } catch {
-        return null;
-    }
-};
-
-const deletePersistedProjectState = (sandboxId: string) => {
-    const storage = getBrowserStorage();
-    if (!storage) {
-        return;
-    }
-
-    try {
-        storage.removeItem(getStorageKey(sandboxId));
-    } catch {
-        // ignore storage errors
-    }
 };
 
 const canUseFetch = () => {
@@ -352,20 +274,8 @@ export class NodeFsProvider extends Provider {
         if (existing) {
             if (previewUrl) {
                 existing.previewUrl = previewUrl;
-                persistProjectState(existing);
             }
             return existing;
-        }
-
-        const hydrated = loadProjectState(sandboxId);
-        if (hydrated) {
-            if (previewUrl) {
-                hydrated.previewUrl = previewUrl;
-                persistProjectState(hydrated);
-            }
-
-            NodeFsProvider.projects.set(sandboxId, hydrated);
-            return hydrated;
         }
 
         const created: NodeFsProjectState = {
@@ -374,38 +284,189 @@ export class NodeFsProvider extends Provider {
             files: new Map(),
             watchers: new Set(),
             previewUrl: previewUrl || DEFAULT_PREVIEW_URL,
+            hydrated: false,
         };
 
         NodeFsProvider.projects.set(sandboxId, created);
-        persistProjectState(created);
         return created;
+    }
+
+    private requireTransport(): NodeFsTransport {
+        const transport = this.options.transport;
+        if (!transport) {
+            throw new Error(
+                'NodeFs provider has no transport configured. Inject one via NodeFsProviderOptions.transport.',
+            );
+        }
+        return transport;
+    }
+
+    /**
+     * Whether the mapped disk file already holds exactly this content. Identical writes
+     * (sync re-pushes, preload script re-copies, config re-injections) are skipped so the
+     * user's dev server does not see mtime-only changes and reload frames needlessly.
+     */
+    private async isRemoteContentIdentical(
+        path: string,
+        content: string | Uint8Array,
+    ): Promise<boolean> {
+        try {
+            const result = await this.requireTransport().read(this.sandboxId, toRelativePath(path));
+            const incomingBase64 = toBase64(content);
+            const diskBase64 =
+                result.encoding === 'base64' ? result.content : toBase64(result.content);
+            return diskBase64 === incomingBase64;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Pull the full listing from disk and bulk-read file contents in size-capped
+     * batches. Files that are too large (or hit the per-call cap) stay in the cache
+     * without content and are single-read on demand by `readFile`.
+     */
+    private async refreshSnapshot(): Promise<void> {
+        const transport = this.requireTransport();
+        const { entries } = await transport.listTree(this.sandboxId);
+
+        const directories = new Set<string>(['/']);
+        const files = new Map<string, NodeFsStoredFile>();
+        const pendingPaths: string[] = [];
+        const pendingSizes = new Map<string, number>();
+
+        for (const entry of entries) {
+            const normalized = normalizePath(`/${entry.path}`);
+            if (entry.type === 'directory') {
+                directories.add(normalized);
+                continue;
+            }
+
+            files.set(normalized, {
+                path: normalized,
+                type: isBinaryFile(normalized) ? 'binary' : 'text',
+                content: null,
+                size: entry.size,
+            });
+            pendingPaths.push(entry.path);
+            pendingSizes.set(entry.path, entry.size ?? 0);
+            ensureParentDirectories(directories, normalized);
+        }
+
+        // Group into readMany batches within the transport caps.
+        const batches: string[][] = [];
+        let currentBatch: string[] = [];
+        let currentBytes = 0;
+
+        for (const entryPath of pendingPaths) {
+            const size = pendingSizes.get(entryPath) ?? 0;
+            if (size > SNAPSHOT_MAX_FILE_BYTES) {
+                continue;
+            }
+            if (
+                currentBatch.length >= SNAPSHOT_MAX_BATCH_PATHS ||
+                currentBytes + size > SNAPSHOT_MAX_BATCH_BYTES
+            ) {
+                if (currentBatch.length > 0) {
+                    batches.push(currentBatch);
+                }
+                currentBatch = [];
+                currentBytes = 0;
+            }
+            currentBatch.push(entryPath);
+            currentBytes += size;
+        }
+        if (currentBatch.length > 0) {
+            batches.push(currentBatch);
+        }
+
+        for (const batch of batches) {
+            try {
+                const { files: readFiles } = await transport.readMany(this.sandboxId, batch);
+                for (const readResult of readFiles) {
+                    const normalized = normalizePath(`/${readResult.path}`);
+                    const existing = files.get(normalized);
+                    files.set(normalized, {
+                        path: normalized,
+                        type: readResult.type,
+                        content: decodeReadResult(readResult),
+                        size: readResult.size ?? existing?.size,
+                    });
+                }
+            } catch (error) {
+                // Batch failed — files stay without content and fall back to single reads.
+                console.warn('[nodefs] Snapshot batch read failed:', error);
+            }
+        }
+
+        this.project.directories = directories;
+        this.project.files = files;
+        this.project.hydrated = true;
+    }
+
+    private async refreshSnapshotBestEffort(): Promise<void> {
+        try {
+            await this.refreshSnapshot();
+        } catch (error) {
+            // Unmapped or unreachable sandbox: the editor still opens with an empty
+            // file tree and surfaces errors when individual operations are attempted.
+            console.warn('[nodefs] Snapshot refresh skipped:', error);
+        }
     }
 
     async initialize(input: InitializeInput): Promise<InitializeOutput> {
         this.project = NodeFsProvider.getProjectState(this.sandboxId, this.options.previewUrl);
+        await this.refreshSnapshotBestEffort();
         return {};
     }
 
     async writeFile(input: WriteFileInput): Promise<WriteFileOutput> {
         const path = normalizePath(input.args.path);
         const existing = this.project.files.get(path);
+        const isIdentical = await this.isRemoteContentIdentical(path, input.args.content);
 
-        if (existing && !input.args.overwrite) {
+        if (existing && !input.args.overwrite && !isIdentical) {
             throw new Error(`File already exists: ${path}`);
         }
 
-        ensureParentDirectories(this.project, path);
+        if (isIdentical) {
+            // Disk already matches: refresh the cache but skip the write and the
+            // watch event so nothing downstream sees a phantom change.
+            ensureParentDirectories(this.project.directories, path);
+            this.project.files.set(path, {
+                path,
+                content: cloneContent(input.args.content),
+                type: typeof input.args.content === 'string' ? 'text' : 'binary',
+                size: byteLength(input.args.content),
+            });
+            return {
+                success: true,
+            };
+        }
+
+        const encodedContent =
+            typeof input.args.content === 'string'
+                ? { content: input.args.content, encoding: 'utf8' as const }
+                : { content: toBase64(input.args.content), encoding: 'base64' as const };
+
+        await this.requireTransport().write(this.sandboxId, {
+            path: toRelativePath(path),
+            ...encodedContent,
+            overwrite: input.args.overwrite,
+        });
+
+        ensureParentDirectories(this.project.directories, path);
         this.project.files.set(path, {
             path,
             content: cloneContent(input.args.content),
-            type: typeof input.args.content === 'string' ? 'text' : 'binary',
+            type: encodedContent.encoding === 'base64' ? 'binary' : 'text',
+            size: byteLength(input.args.content),
         });
 
         await emitWatchEvent(this.project, {
             type: existing ? 'change' : 'add',
             paths: [toRelativePath(path)],
         });
-        persistProjectState(this.project);
 
         return {
             success: true,
@@ -416,14 +477,16 @@ export class NodeFsProvider extends Provider {
         const oldPath = normalizePath(input.args.oldPath);
         const newPath = normalizePath(input.args.newPath);
 
-        if (this.project.files.has(oldPath)) {
-            const file = this.project.files.get(oldPath);
-            if (!file) {
-                throw new Error(`File not found: ${oldPath}`);
-            }
+        const file = this.project.files.get(oldPath);
+        if (file) {
+            await this.requireTransport().rename(
+                this.sandboxId,
+                toRelativePath(oldPath),
+                toRelativePath(newPath),
+            );
 
             this.project.files.delete(oldPath);
-            ensureParentDirectories(this.project, newPath);
+            ensureParentDirectories(this.project.directories, newPath);
             this.project.files.set(newPath, {
                 ...file,
                 path: newPath,
@@ -433,7 +496,6 @@ export class NodeFsProvider extends Provider {
                 type: 'change',
                 paths: [toRelativePath(oldPath), toRelativePath(newPath)],
             });
-            persistProjectState(this.project);
 
             return {};
         }
@@ -442,26 +504,30 @@ export class NodeFsProvider extends Provider {
             throw new Error(`Path not found: ${oldPath}`);
         }
 
+        await this.requireTransport().rename(
+            this.sandboxId,
+            toRelativePath(oldPath),
+            toRelativePath(newPath),
+        );
+
         const movedDirectories = Array.from(this.project.directories)
             .filter((dir) => dir === oldPath || dir.startsWith(`${oldPath}/`))
             .sort((a, b) => a.length - b.length);
 
         for (const directory of movedDirectories) {
             this.project.directories.delete(directory);
-            const remapped = directory === oldPath ? newPath : directory.replace(oldPath, newPath);
-            this.project.directories.add(remapped);
+            this.project.directories.add(remapPath(directory, oldPath, newPath));
         }
 
         const movedFiles = Array.from(this.project.files.entries()).filter(
             ([filePath]) => filePath === oldPath || filePath.startsWith(`${oldPath}/`),
         );
 
-        for (const [filePath, file] of movedFiles) {
+        for (const [filePath, moved] of movedFiles) {
             this.project.files.delete(filePath);
-            const remapped = filePath === oldPath ? newPath : filePath.replace(oldPath, newPath);
-            this.project.files.set(remapped, {
-                ...file,
-                path: remapped,
+            this.project.files.set(remapPath(filePath, oldPath, newPath), {
+                ...moved,
+                path: remapPath(filePath, oldPath, newPath),
             });
         }
 
@@ -469,7 +535,6 @@ export class NodeFsProvider extends Provider {
             type: 'change',
             paths: [toRelativePath(oldPath), toRelativePath(newPath)],
         });
-        persistProjectState(this.project);
 
         return {};
     }
@@ -484,13 +549,30 @@ export class NodeFsProvider extends Provider {
         }
 
         const file = this.project.files.get(path);
-        if (!file) {
-            throw new Error(`Path not found: ${path}`);
+        if (file) {
+            return {
+                type: 'file',
+                size: file.size ?? byteLength(file.content),
+            };
         }
 
+        // Unknown to the snapshot (pruned or created externally) — ask the transport.
+        const entry = await this.requireTransport().stat(this.sandboxId, toRelativePath(path));
+        if (entry.type === 'directory') {
+            ensureParentDirectories(this.project.directories, path);
+            this.project.directories.add(path);
+            return { type: 'directory' };
+        }
+
+        this.project.files.set(path, {
+            path,
+            type: isBinaryFile(path) ? 'binary' : 'text',
+            content: null,
+            size: entry.size,
+        });
         return {
             type: 'file',
-            size: typeof file.content === 'string' ? file.content.length : file.content.byteLength,
+            size: entry.size,
         };
     }
 
@@ -498,12 +580,12 @@ export class NodeFsProvider extends Provider {
         const path = normalizePath(input.args.path);
 
         if (this.project.files.has(path)) {
+            await this.requireTransport().remove(this.sandboxId, toRelativePath(path), false);
             this.project.files.delete(path);
             await emitWatchEvent(this.project, {
                 type: 'remove',
                 paths: [toRelativePath(path)],
             });
-            persistProjectState(this.project);
             return {};
         }
 
@@ -520,6 +602,12 @@ export class NodeFsProvider extends Provider {
         if (!input.args.recursive && hasNestedEntries) {
             throw new Error(`Directory is not empty: ${path}`);
         }
+
+        await this.requireTransport().remove(
+            this.sandboxId,
+            toRelativePath(path),
+            input.args.recursive === true || hasNestedEntries,
+        );
 
         for (const filePath of Array.from(this.project.files.keys())) {
             if (filePath === path || filePath.startsWith(`${path}/`)) {
@@ -539,7 +627,6 @@ export class NodeFsProvider extends Provider {
             type: 'remove',
             paths: [toRelativePath(path)],
         });
-        persistProjectState(this.project);
 
         return {};
     }
@@ -603,16 +690,30 @@ export class NodeFsProvider extends Provider {
 
     async readFile(input: ReadFileInput): Promise<ReadFileOutput> {
         const path = normalizePath(input.args.path);
-        const file = this.project.files.get(path);
+        let file = this.project.files.get(path);
+
         if (!file) {
-            throw new Error(`File not found: ${path}`);
+            const result = await this.requireTransport().read(this.sandboxId, toRelativePath(path));
+            file = {
+                path,
+                type: result.type,
+                content: decodeReadResult(result),
+                size: result.size,
+            };
+            this.project.files.set(path, file);
+            ensureParentDirectories(this.project.directories, path);
+        } else if (file.content === null) {
+            const result = await this.requireTransport().read(this.sandboxId, toRelativePath(path));
+            file.content = decodeReadResult(result);
+            file.type = result.type;
+            file.size = result.size ?? file.size;
         }
 
         if (file.type === 'text') {
             return {
                 file: {
                     path: toRelativePath(path),
-                    content: typeof file.content === 'string' ? file.content : contentToString(file.content),
+                    content: contentToString(file.content),
                     type: 'text',
                     toString: () => {
                         return contentToString(file.content);
@@ -624,7 +725,7 @@ export class NodeFsProvider extends Provider {
         const binaryContent =
             typeof file.content === 'string'
                 ? new TextEncoder().encode(file.content)
-                : new Uint8Array(file.content);
+                : new Uint8Array(file.content ?? new Uint8Array());
 
         return {
             file: {
@@ -648,17 +749,21 @@ export class NodeFsProvider extends Provider {
         const sourcePath = normalizePath(input.args.sourcePath);
         const targetPath = normalizePath(input.args.targetPath);
 
-        if (this.project.files.has(sourcePath)) {
-            const sourceFile = this.project.files.get(sourcePath);
-            if (!sourceFile) {
-                throw new Error(`Source file not found: ${sourcePath}`);
-            }
-
+        const sourceFile = this.project.files.get(sourcePath);
+        if (sourceFile) {
             if (!input.args.overwrite && this.project.files.has(targetPath)) {
                 throw new Error(`Target file already exists: ${targetPath}`);
             }
 
-            ensureParentDirectories(this.project, targetPath);
+            await this.requireTransport().copy(
+                this.sandboxId,
+                toRelativePath(sourcePath),
+                toRelativePath(targetPath),
+                false,
+                input.args.overwrite,
+            );
+
+            ensureParentDirectories(this.project.directories, targetPath);
             this.project.files.set(targetPath, {
                 ...sourceFile,
                 path: targetPath,
@@ -668,7 +773,6 @@ export class NodeFsProvider extends Provider {
                 type: 'add',
                 paths: [toRelativePath(targetPath)],
             });
-            persistProjectState(this.project);
             return {};
         }
 
@@ -680,16 +784,20 @@ export class NodeFsProvider extends Provider {
             throw new Error('Recursive must be true when copying directories');
         }
 
-        const subDirectories = Array.from(this.project.directories)
+        await this.requireTransport().copy(
+            this.sandboxId,
+            toRelativePath(sourcePath),
+            toRelativePath(targetPath),
+            true,
+            input.args.overwrite,
+        );
+
+        const copiedDirectories = Array.from(this.project.directories)
             .filter((dirPath) => dirPath === sourcePath || dirPath.startsWith(`${sourcePath}/`))
             .sort((a, b) => a.length - b.length);
 
-        for (const dirPath of subDirectories) {
-            const remapped =
-                dirPath === sourcePath
-                    ? targetPath
-                    : dirPath.replace(sourcePath, targetPath);
-            this.project.directories.add(remapped);
+        for (const dirPath of copiedDirectories) {
+            this.project.directories.add(remapPath(dirPath, sourcePath, targetPath));
         }
 
         const copiedFiles = Array.from(this.project.files.entries()).filter(
@@ -697,10 +805,7 @@ export class NodeFsProvider extends Provider {
         );
 
         for (const [filePath, file] of copiedFiles) {
-            const remapped =
-                filePath === sourcePath
-                    ? targetPath
-                    : filePath.replace(sourcePath, targetPath);
+            const remapped = remapPath(filePath, sourcePath, targetPath);
             this.project.files.set(remapped, {
                 ...file,
                 path: remapped,
@@ -712,21 +817,22 @@ export class NodeFsProvider extends Provider {
             type: 'add',
             paths: [toRelativePath(targetPath)],
         });
-        persistProjectState(this.project);
 
         return {};
     }
 
     async createDirectory(input: CreateDirectoryInput): Promise<CreateDirectoryOutput> {
         const path = normalizePath(input.args.path);
-        ensureParentDirectories(this.project, path);
+
+        await this.requireTransport().mkdir(this.sandboxId, toRelativePath(path));
+
+        ensureParentDirectories(this.project.directories, path);
         this.project.directories.add(path);
 
         await emitWatchEvent(this.project, {
             type: 'add',
             paths: [toRelativePath(path)],
         });
-        persistProjectState(this.project);
 
         return {};
     }
@@ -777,6 +883,7 @@ export class NodeFsProvider extends Provider {
     }
 
     async setup(input: SetupInput): Promise<SetupOutput> {
+        await this.refreshSnapshotBestEffort();
         return {};
     }
 
@@ -787,12 +894,12 @@ export class NodeFsProvider extends Provider {
     }
 
     async reload(): Promise<boolean> {
-        // TODO: Implement
+        await this.refreshSnapshotBestEffort();
         return true;
     }
 
     async reconnect(): Promise<void> {
-        // TODO: Implement
+        await this.refreshSnapshotBestEffort();
     }
 
     async ping(): Promise<boolean> {
@@ -823,8 +930,8 @@ export class NodeFsProvider extends Provider {
     }
 
     async stopProject(input: StopProjectInput): Promise<StopProjectOutput> {
+        // In-memory only — the mapped disk folder must never be touched.
         NodeFsProvider.projects.delete(this.sandboxId);
-        deletePersistedProjectState(this.sandboxId);
         return {};
     }
 
@@ -841,7 +948,7 @@ export class NodeFsProvider extends Provider {
     }
 
     async destroy(): Promise<void> {
-        // TODO: Implement
+        // Keep the cached snapshot — reopening the project should not force a full re-read.
     }
 }
 

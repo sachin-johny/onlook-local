@@ -4,6 +4,15 @@ import { NodeFsProvider, type NodeFsProviderOptions } from './providers/nodefs';
 export * from './providers';
 export { CodesandboxProvider } from './providers/codesandbox';
 export { NodeFsProvider } from './providers/nodefs';
+export type {
+    NodeFsListOutput,
+    NodeFsReadManyOutput,
+    NodeFsReadResult,
+    NodeFsTransport,
+    NodeFsTransportEntry,
+    NodeFsTreeOutput,
+    NodeFsWriteInput,
+} from './providers/nodefs/transport';
 export * from './types';
 
 export interface CreateClientOptions {
@@ -76,6 +85,7 @@ function newProviderInstance(codeProvider: CodeProvider, providerOptions: Provid
             sandboxId: providerOptions.nodefs?.sandboxId ?? providerOptions.codesandbox?.sandboxId,
             userId: providerOptions.nodefs?.userId ?? providerOptions.codesandbox?.userId,
             previewUrl: providerOptions.nodefs?.previewUrl,
+            transport: providerOptions.nodefs?.transport,
         };
 
         return new NodeFsProvider(derivedNodeFsOptions);

@@ -250,7 +250,9 @@ declare const messages: {
                         },
                         "controls": {
                             "newChat": "New Chat",
-                            "history": "Chat History"
+                            "history": "Chat History",
+                            "minimize": "Minimize panel",
+                            "restore": "Show chat panel"
                         },
                         "settings": {
                             "showSuggestions": "Show suggestions",

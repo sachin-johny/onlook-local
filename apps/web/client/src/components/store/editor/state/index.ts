@@ -16,6 +16,7 @@ export class StateManager {
     leftPanelLocked = false;
     canvasPanning = false;
     isDragSelecting = false;
+    isChatPanelMinimized = false;
 
     editorMode: EditorMode = EditorMode.DESIGN;
     insertMode: InsertMode | null = null;
@@ -52,6 +53,7 @@ export class StateManager {
         this.publishOpen = false;
         this.branchTab = null;
         this.manageBranchId = null;
+        this.isChatPanelMinimized = false;
         this.resetCanvasScrollingDebounced.cancel();
     }
 }

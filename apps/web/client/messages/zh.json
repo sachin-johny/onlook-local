@@ -247,7 +247,9 @@
                         },
                         "controls": {
                             "newChat": "新聊天",
-                            "history": "聊天记录"
+                            "history": "聊天记录",
+                            "minimize": "最小化面板",
+                            "restore": "显示聊天面板"
                         },
                         "settings": {
                             "showSuggestions": "显示建议",

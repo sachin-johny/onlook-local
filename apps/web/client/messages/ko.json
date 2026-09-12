@@ -247,7 +247,9 @@
                         },
                         "controls": {
                             "newChat": "새 채팅",
-                            "history": "채팅 기록"
+                            "history": "채팅 기록",
+                            "minimize": "패널 최소화",
+                            "restore": "채팅 패널 표시"
                         },
                         "settings": {
                             "showSuggestions": "제안 표시",

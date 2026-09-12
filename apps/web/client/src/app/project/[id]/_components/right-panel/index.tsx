@@ -4,6 +4,7 @@ import { useEditorEngine } from '@/components/store/editor';
 import { transKeys } from '@/i18n/keys';
 import { Icons } from '@onlook/ui/icons/index';
 import { ResizablePanel } from '@onlook/ui/resizable';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@onlook/ui/tooltip';
 import { observer } from 'mobx-react-lite';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -18,6 +19,30 @@ export const RightPanel = observer(() => {
     const [isChatHistoryOpen, setIsChatHistoryOpen] = useState(false);
     const currentConversation = editorEngine.chat.conversation.current;
     const editPanelWidth = 352
+
+    if (editorEngine.state.isChatPanelMinimized) {
+        return (
+            <div className="flex h-full w-full justify-end">
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            aria-label={t(transKeys.editor.panels.edit.tabs.chat.controls.restore)}
+                            className="mt-2 flex cursor-pointer flex-col items-center gap-2 rounded-l-xl border-[0.5px] bg-background/95 px-1.5 py-3 text-foreground-secondary shadow backdrop-blur-xl transition-colors hover:text-foreground-primary"
+                            onClick={() => (editorEngine.state.isChatPanelMinimized = false)}
+                        >
+                            <Icons.Sparkles className="h-4 w-4" />
+                            <span className="text-small [writing-mode:vertical-rl]">
+                                {t(transKeys.editor.panels.edit.tabs.chat.name)}
+                            </span>
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" hideArrow>
+                        {t(transKeys.editor.panels.edit.tabs.chat.controls.restore)}
+                    </TooltipContent>
+                </Tooltip>
+            </div>
+        );
+    }
 
     return (
         <div

@@ -102,6 +102,7 @@ export const HotkeysArea = ({ children }: { children: ReactNode }) => {
     );
     useHotkeys(Hotkey.NEW_AI_CHAT.command, () => {
         editorEngine.state.editorMode = EditorMode.DESIGN;
+        editorEngine.state.isChatPanelMinimized = false;
         editorEngine.chat.conversation.startNewConversation();
     });
     useHotkeys(

@@ -25,6 +25,10 @@ export class ChatManager {
     }
 
     focusChatInput() {
+        // Focus is meaningless while the panel is minimized — restore it first
+        if (this.editorEngine.state.isChatPanelMinimized) {
+            this.editorEngine.state.isChatPanelMinimized = false;
+        }
         window.dispatchEvent(new Event(FOCUS_CHAT_INPUT_EVENT));
     }
 

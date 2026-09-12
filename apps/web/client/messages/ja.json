@@ -136,7 +136,9 @@
                         },
                         "controls": {
                             "newChat": "新規チャット",
-                            "history": "チャット履歴"
+                            "history": "チャット履歴",
+                            "minimize": "パネルを最小化",
+                            "restore": "チャットパネルを表示"
                         },
                         "settings": {
                             "showSuggestions": "提案を表示",

@@ -247,7 +247,9 @@
                         },
                         "controls": {
                             "newChat": "Nuevo Chat",
-                            "history": "Historial de Chat"
+                            "history": "Historial de Chat",
+                            "minimize": "Minimizar panel",
+                            "restore": "Mostrar panel de chat"
                         },
                         "settings": {
                             "showSuggestions": "Mostrar sugerencias",

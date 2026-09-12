@@ -386,7 +386,15 @@ const CREATE_TABLES_SQL = `
         content TEXT,
         created_at INTEGER DEFAULT (unixepoch())
     );
-    
+
+    -- Local sandboxes (sandbox id -> real disk folder mapping)
+    CREATE TABLE IF NOT EXISTS local_sandboxes (
+        sandbox_id TEXT PRIMARY KEY,
+        local_path TEXT NOT NULL,
+        display_name TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
 `;
 
 /**

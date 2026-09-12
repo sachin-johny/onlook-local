@@ -290,6 +290,16 @@ export const feedback = sqliteTable('feedback', {
     createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 });
 
+// ─── Local Sandboxes ─────────────────────────────────────────────────
+
+export const localSandboxes = sqliteTable('local_sandboxes', {
+    sandboxId: text('sandbox_id').primaryKey(),
+    localPath: text('local_path').notNull(),
+    displayName: text('display_name'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+});
+
 // ─── Relations ───────────────────────────────────────────────────────
 
 export const authUsersRelations = relations(authUsers, ({ one }) => ({

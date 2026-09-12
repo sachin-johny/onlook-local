@@ -21,6 +21,8 @@ export interface Project {
     name: string;
     folderPath: string;
     files: ProcessedFile[];
+    /** Absolute disk path of the imported folder (local mode only). */
+    localPath?: string;
 }
 
 interface ProjectCreationContextValue {
@@ -149,12 +151,16 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
                 setError('No user found. Please sign in and try again.');
                 return;
             }
-            if (!projectData.files) {
+            if (!localMode && !projectData.files) {
                 setError('No project files found to import.');
                 return;
             }
+            if (localMode && !projectData.localPath) {
+                setError('No local folder path was provided. Select your project folder and retry.');
+                return;
+            }
 
-            const packageJsonFile = projectData.files.find(
+            const packageJsonFile = projectData.files?.find(
                 (f) => f.path.endsWith('package.json') && f.type === ProcessedFileType.TEXT,
             );
 
@@ -169,24 +175,17 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
                         title: `Imported project - ${userId}`,
                         tags: ['imported', 'local', userId],
                     },
+                    localPath: localMode ? projectData.localPath : undefined,
                 }),
                 30000,
                 'Sandbox initialization timed out. Please retry.',
             );
 
-            let provider;
-            if (localMode) {
-                provider = await createCodeProviderClient(CodeProvider.NodeFs, {
-                    providerOptions: {
-                        nodefs: {
-                            sandboxId: forkedSandbox.sandboxId,
-                            userId,
-                            previewUrl: process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL,
-                        },
-                    },
-                });
-            } else {
-                provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
+            if (!localMode) {
+                // Cloud import: upload the processed files into a fresh sandbox.
+                // (Local import skips this entirely — the sandbox root IS the disk folder,
+                // and fork already bound the mapping.)
+                const provider = await createCodeProviderClient(CodeProvider.CodeSandbox, {
                     providerOptions: {
                         codesandbox: {
                             sandboxId: forkedSandbox.sandboxId,
@@ -199,11 +198,11 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
                         },
                     },
                 });
-            }
 
-            await uploadToSandbox(projectData.files, provider);
-            await provider.setup({});
-            await provider.destroy();
+                await uploadToSandbox(projectData.files!, provider);
+                await provider.setup({});
+                await provider.destroy();
+            }
 
             const project = await withTimeout(
                 createProject({
@@ -319,6 +318,7 @@ export const ProjectCreationProvider = ({ children, totalSteps }: ProjectCreatio
             folderPath: undefined,
             name: undefined,
             files: undefined,
+            localPath: undefined,
         });
         setCurrentStep(0);
         setError(null);

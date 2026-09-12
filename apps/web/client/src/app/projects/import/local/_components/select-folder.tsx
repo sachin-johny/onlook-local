@@ -3,13 +3,15 @@ import {
     type NextJsProjectValidation,
     type ProcessedFile,
 } from '@/app/projects/types';
+import type { RouterOutputs } from '@/trpc/client';
+import { api } from '@/trpc/react';
 import { IGNORED_UPLOAD_DIRECTORIES, IGNORED_UPLOAD_FILES } from '@onlook/constants';
 import { Button } from '@onlook/ui/button';
 import { CardDescription, CardTitle } from '@onlook/ui/card';
 import { Icons } from '@onlook/ui/icons';
 import { isBinaryFile } from '@onlook/utility';
 import { motion } from 'motion/react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StepContent, StepFooter, StepHeader } from '../../steps';
 import { useProjectCreation } from '../_context';
 
@@ -20,6 +22,19 @@ declare module 'react' {
     }
 }
 
+type LocalPathValidation = RouterOutputs['localFs']['validatePath'];
+
+const LAST_LOCAL_PATH_STORAGE_KEY = 'onlook_last_local_path';
+
+const getExpectedPreviewPort = () => {
+    try {
+        const previewUrl = process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL?.trim() || 'http://localhost:8084';
+        return Number(new URL(previewUrl).port) || 80;
+    } catch {
+        return 8084;
+    }
+};
+
 export const NewSelectFolder = () => {
     const {
         projectData,
@@ -29,11 +44,74 @@ export const NewSelectFolder = () => {
         resetProjectData,
         validateNextJsProject,
     } = useProjectCreation();
+    const isLocalMode = process.env.NEXT_PUBLIC_ONLOOK_LOCAL_MODE === 'true';
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState('');
     const [validation, setValidation] = useState<NextJsProjectValidation | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ── Local mode: absolute path input validated against the real disk folder ──
+    const [localPathInput, setLocalPathInput] = useState('');
+    const [debouncedPath, setDebouncedPath] = useState('');
+    const appliedLocalPathRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!isLocalMode) {
+            return;
+        }
+        try {
+            const lastPath = window.localStorage.getItem(LAST_LOCAL_PATH_STORAGE_KEY);
+            if (lastPath) {
+                setLocalPathInput((current) => current || lastPath);
+            }
+        } catch {
+            // localStorage unavailable — start with an empty input.
+        }
+    }, [isLocalMode]);
+
+    useEffect(() => {
+        if (!isLocalMode) {
+            return;
+        }
+        const timer = setTimeout(() => {
+            setDebouncedPath(localPathInput.trim());
+            appliedLocalPathRef.current = null;
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [isLocalMode, localPathInput]);
+
+    const {
+        data: pathValidation,
+        isFetching: isValidatingPath,
+        error: validateError,
+    } = api.localFs.validatePath.useQuery(
+        { path: debouncedPath },
+        { enabled: isLocalMode && debouncedPath.length > 0 },
+    );
+
+    useEffect(() => {
+        if (!isLocalMode || !pathValidation?.valid || !pathValidation.resolvedPath) {
+            return;
+        }
+        if (appliedLocalPathRef.current === pathValidation.resolvedPath) {
+            return;
+        }
+        appliedLocalPathRef.current = pathValidation.resolvedPath;
+
+        try {
+            window.localStorage.setItem(LAST_LOCAL_PATH_STORAGE_KEY, pathValidation.resolvedPath);
+        } catch {
+            // Ignore storage quota and availability errors.
+        }
+
+        setProjectData({
+            name: pathValidation.name || 'Imported project',
+            folderPath: pathValidation.resolvedPath,
+            localPath: pathValidation.resolvedPath,
+            files: [],
+        });
+    }, [isLocalMode, pathValidation, setProjectData]);
 
     const extractProjectName = (files: ProcessedFile[]): string | null => {
         const packageJsonFile = files.find(
@@ -298,6 +376,7 @@ export const NewSelectFolder = () => {
         setError('');
         setIsUploading(false);
         setIsDragging(false);
+        appliedLocalPathRef.current = null;
     };
 
     const renderHeader = () => {
@@ -466,15 +545,147 @@ export const NewSelectFolder = () => {
         );
     };
 
+    const renderLocalHeader = () => {
+        if (!debouncedPath) {
+            return (
+                <>
+                    <CardTitle>{'Select your project folder'}</CardTitle>
+                    <CardDescription>
+                        {'Type the absolute path of your Next.js project folder on disk'}
+                    </CardDescription>
+                </>
+            );
+        }
+        if (isValidatingPath) {
+            return (
+                <>
+                    <CardTitle>{'Verifying compatibility with Onlook'}</CardTitle>
+                    <CardDescription>
+                        {"We're checking to make sure this project can work with Onlook"}
+                    </CardDescription>
+                </>
+            );
+        }
+        if (validateError || !pathValidation?.valid) {
+            return (
+                <>
+                    <CardTitle>{"This project won't work with Onlook"}</CardTitle>
+                    <CardDescription>
+                        {'Onlook only works with NextJS + React + Tailwind projects'}
+                    </CardDescription>
+                </>
+            );
+        }
+        return (
+            <>
+                <CardTitle>{'Project verified'}</CardTitle>
+                <CardDescription>{'Your project is ready to import to Onlook'}</CardDescription>
+            </>
+        );
+    };
+
+    const renderLocalStatus = (expectedPort: number) => {
+        if (!debouncedPath) {
+            return (
+                <p className="text-mini text-gray-200">
+                    {'Onlook will read and edit the files in this folder directly.'}
+                </p>
+            );
+        }
+        if (isValidatingPath) {
+            return (
+                <div className="flex items-center gap-2">
+                    <Icons.LoadingSpinner className="w-4 h-4 text-gray-200 animate-spin" />
+                    <p className="text-mini text-gray-200">{'Checking folder...'}</p>
+                </div>
+            );
+        }
+        if (validateError) {
+            return (
+                <p className="text-mini text-red-400">
+                    {'Could not verify the folder. Is the Onlook local server running?'}
+                </p>
+            );
+        }
+        if (pathValidation && !pathValidation.valid) {
+            return <p className="text-mini text-red-400">{pathValidation.error}</p>;
+        }
+        if (pathValidation?.valid) {
+            const portWarning =
+                pathValidation.devPort !== undefined && pathValidation.devPort !== expectedPort;
+            return (
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                        <Icons.CheckCircled className="w-4 h-4 text-teal-200" />
+                        <p className="text-mini text-teal-200">
+                            {`${pathValidation.name ?? 'Next.js project'} — ${
+                                pathValidation.routerType === 'app' ? 'App' : 'Pages'
+                            } router detected`}
+                        </p>
+                    </div>
+                    <p className="text-mini text-gray-200 break-all">{pathValidation.resolvedPath}</p>
+                    {portWarning && (
+                        <p className="text-mini text-amber-400">
+                            {`Your dev script uses port ${pathValidation.devPort}. Start your app on port ${expectedPort} (e.g. "npm run dev -- -p ${expectedPort}") so the live preview works.`}
+                        </p>
+                    )}
+                </div>
+            );
+        }
+        return null;
+    };
+
+    const renderLocalContent = () => {
+        const expectedPort = getExpectedPreviewPort();
+        return (
+            <motion.div
+                key="localPath"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="w-full space-y-4"
+            >
+                <div className="flex flex-col gap-2">
+                    <label
+                        htmlFor="local-project-path"
+                        className="text-sm font-medium text-gray-200"
+                    >
+                        {'Project folder on disk (absolute path)'}
+                    </label>
+                    <input
+                        id="local-project-path"
+                        type="text"
+                        value={localPathInput}
+                        onChange={(event) => setLocalPathInput(event.target.value)}
+                        placeholder="E:\path\to\your\project"
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="w-full h-10 rounded-md bg-gray-900 border border-gray-300 px-3 text-sm text-gray-200 outline-none focus:border-blue-400"
+                    />
+                </div>
+                {renderLocalStatus(expectedPort)}
+            </motion.div>
+        );
+    };
+
     return (
         <>
-            <StepHeader>{renderHeader()}</StepHeader>
-            <StepContent>{renderProjectInfo()}</StepContent>
+            <StepHeader>{isLocalMode ? renderLocalHeader() : renderHeader()}</StepHeader>
+            <StepContent>{isLocalMode ? renderLocalContent() : renderProjectInfo()}</StepContent>
             <StepFooter>
                 <Button type="button" onClick={prevStep} variant="outline" className="px-3 py-2">
                     Cancel
                 </Button>
-                {projectData.folderPath ? (
+                {isLocalMode ? (
+                    <Button
+                        type="button"
+                        onClick={nextStep}
+                        className="px-3 py-2"
+                        disabled={!pathValidation?.valid || isValidatingPath}
+                    >
+                        Finish setup
+                    </Button>
+                ) : projectData.folderPath ? (
                     <Button
                         type="button"
                         onClick={validation?.isValid ? nextStep : reset}

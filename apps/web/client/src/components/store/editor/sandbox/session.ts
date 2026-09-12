@@ -1,5 +1,6 @@
 import { api } from '@/trpc/client';
 import { CodeProvider, createCodeProviderClient, type Provider } from '@onlook/code-provider';
+import { localFsHttpTransport } from '@/services/local-fs/transport';
 import { isLocalModeEnabled } from '@/utils/local-mode';
 import type { Branch } from '@onlook/models';
 import { makeAutoObservable } from 'mobx';
@@ -38,6 +39,7 @@ export class SessionManager {
                             sandboxId,
                             userId,
                             previewUrl: process.env.NEXT_PUBLIC_LOCAL_PREVIEW_URL,
+                            transport: localFsHttpTransport,
                         },
                     },
                 });

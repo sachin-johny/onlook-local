@@ -11,6 +11,7 @@ import { getSandboxPreviewUrl, SandboxTemplates, Templates } from '@onlook/const
 import { shortenUuid } from '@onlook/utility/src/id';
 
 import { createTRPCRouter, protectedProcedure } from '../../trpc';
+import { bindLocalSandbox, createServerNodeFsTransport } from '../../services/local-fs';
 
 function isLocalModeEnabled() {
     return (
@@ -43,7 +44,7 @@ function getProvider({
     provider?: CodeProvider;
     userId?: undefined | string;
 }) {
-    if (provider === CodeProvider.CodeSandbox) {
+    if (provider === CodeProvider.CodeSandbox && !isLocalModeEnabled()) {
         return createCodeProviderClient(CodeProvider.CodeSandbox, {
             providerOptions: {
                 codesandbox: {
@@ -59,6 +60,7 @@ function getProvider({
                     sandboxId,
                     userId,
                     previewUrl,
+                    transport: createServerNodeFsTransport(),
                 },
             },
         });
@@ -203,11 +205,17 @@ export const sandboxRouter = createTRPCRouter({
                         tags: z.array(z.string()).optional(),
                     })
                     .optional(),
+                localPath: z.string().min(1).optional(),
             }),
         )
         .mutation(async ({ input }) => {
             if (isLocalModeEnabled()) {
-                return createLocalSandbox(input.sandbox.port);
+                const localSandbox = createLocalSandbox(input.sandbox.port);
+                if (input.localPath) {
+                    // Link the new sandbox to the real disk folder (local import path).
+                    await bindLocalSandbox(localSandbox.sandboxId, input.localPath, input.config?.title);
+                }
+                return localSandbox;
             }
 
             const MAX_RETRY_ATTEMPTS = 3;

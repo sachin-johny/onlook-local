@@ -1,5 +1,7 @@
 'use client';
 
+import { CreateProjectDialog } from '@/app/projects/_components/create-project-dialog';
+import { CreatingProjectOverlay } from '@/app/projects/_components/creating-project-overlay';
 import { useEditorEngine } from '@/components/store/editor';
 import { useCreateBlankProject } from '@/hooks/use-create-blank-project';
 import { transKeys } from '@/i18n/keys';
@@ -21,11 +23,17 @@ interface NewProjectMenuProps {
 
 export const NewProjectMenu = observer(({ onShowCloneDialog }: NewProjectMenuProps) => {
     const editorEngine = useEditorEngine();
-    const { handleStartBlankProject, isCreatingProject } = useCreateBlankProject();
+    const {
+        openNameDialog,
+        handleStartBlankProject,
+        isCreatingProject,
+        isNameDialogOpen,
+        setIsNameDialogOpen,
+    } = useCreateBlankProject();
     const t = useTranslations();
     const router = useRouter();
 
-    const handleStartBlankWithScreenshot = async () => {
+    const handleStartBlankWithScreenshot = () => {
         // Capture screenshot of current project before cleanup
         try {
             editorEngine.screenshot.captureScreenshot();
@@ -33,48 +41,56 @@ export const NewProjectMenu = observer(({ onShowCloneDialog }: NewProjectMenuPro
             console.error('Failed to capture screenshot:', error);
         }
 
-        await handleStartBlankProject();
+        openNameDialog();
     };
 
     return (
-        <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="cursor-pointer">
-                <div className="flex flex-row center items-center">
-                    <Icons.Plus className="mr-2" />
-                    {t(transKeys.projects.actions.newProject)}
-                </div>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-48 ml-2">
-                <DropdownMenuItem
-                    onClick={handleStartBlankWithScreenshot}
-                    disabled={isCreatingProject}
-                    className="cursor-pointer"
-                >
-                    <div className="flex flex-row center items-center group">
-                        {isCreatingProject ? (
-                            <Icons.LoadingSpinner className="mr-2 animate-spin" />
-                        ) : (
-                            <Icons.FilePlus className="mr-2" />
-                        )}
-                        {t(transKeys.projects.actions.blankProject)}
+        <>
+            <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="cursor-pointer">
+                    <div className="flex flex-row center items-center">
+                        <Icons.Plus className="mr-2" />
+                        {t(transKeys.projects.actions.newProject)}
                     </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push(Routes.IMPORT_PROJECT)}>
-                    <div className="flex flex-row center items-center group">
-                        <Icons.Upload className="mr-2" />
-                        {t(transKeys.projects.actions.import)}
-                    </div>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                    onClick={() => onShowCloneDialog(true)}
-                    className="cursor-pointer"
-                >
-                    <div className="flex flex-row center items-center group">
-                        <Icons.Copy className="mr-2" />
-                        Clone this project
-                    </div>
-                </DropdownMenuItem>
-            </DropdownMenuSubContent>
-        </DropdownMenuSub>
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-48 ml-2">
+                    <DropdownMenuItem
+                        onClick={handleStartBlankWithScreenshot}
+                        disabled={isCreatingProject}
+                        className="cursor-pointer"
+                    >
+                        <div className="flex flex-row center items-center group">
+                            {isCreatingProject ? (
+                                <Icons.LoadingSpinner className="mr-2 animate-spin" />
+                            ) : (
+                                <Icons.FilePlus className="mr-2" />
+                            )}
+                            {t(transKeys.projects.actions.blankProject)}
+                        </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push(Routes.IMPORT_PROJECT)}>
+                        <div className="flex flex-row center items-center group">
+                            <Icons.Upload className="mr-2" />
+                            {t(transKeys.projects.actions.import)}
+                        </div>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                        onClick={() => onShowCloneDialog(true)}
+                        className="cursor-pointer"
+                    >
+                        <div className="flex flex-row center items-center group">
+                            <Icons.Copy className="mr-2" />
+                            Clone this project
+                        </div>
+                    </DropdownMenuItem>
+                </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <CreateProjectDialog
+                open={isNameDialogOpen}
+                onClose={() => setIsNameDialogOpen(false)}
+                onSubmit={handleStartBlankProject}
+            />
+            <CreatingProjectOverlay isVisible={isCreatingProject} />
+        </>
     );
 });

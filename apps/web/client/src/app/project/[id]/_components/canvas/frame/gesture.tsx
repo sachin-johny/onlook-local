@@ -48,7 +48,10 @@ export const GestureScreen = observer(({ frame, isResizing }: { frame: Frame, is
                     shouldGetStyle,
                 );
                 if (!el) {
-                    throw new Error('No element found');
+                    // Expected when hovering empty canvas areas or while the frame
+                    // reconnects — not an error worth surfacing.
+                    console.debug('[GestureScreen] No element at cursor location');
+                    return;
                 }
 
                 switch (action) {

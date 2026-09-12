@@ -88,9 +88,11 @@ export const localFsRouter = createTRPCRouter({
         .input(sandboxIdSchema.extend({ path: z.string().min(1) }))
         .query(({ input }) => readFileAt(input.sandboxId, input.path)),
 
+    // A mutation (POST) rather than a query: batched path lists overflow the URL
+    // header limit as a GET — the server answered 431 on large snapshots.
     readMany: localFsProcedure
         .input(sandboxIdSchema.extend({ paths: z.array(z.string().min(1)).min(1).max(200) }))
-        .query(({ input }) => readFilesAt(input.sandboxId, input.paths)),
+        .mutation(({ input }) => readFilesAt(input.sandboxId, input.paths)),
 
     write: localFsProcedure
         .input(

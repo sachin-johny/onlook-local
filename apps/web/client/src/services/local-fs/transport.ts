@@ -42,7 +42,8 @@ export function createLocalFsHttpTransport(): NodeFsTransport {
             return await api.localFs.read.query({ sandboxId, path });
         },
         readMany: async (sandboxId, paths) => {
-            return await api.localFs.readMany.query({ sandboxId, paths });
+            // POST (mutation) — the batched path list overflows a GET URL (431).
+            return await api.localFs.readMany.mutate({ sandboxId, paths });
         },
         write: async (sandboxId, input) => {
             await api.localFs.write.mutate({

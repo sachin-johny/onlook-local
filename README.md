@@ -66,6 +66,30 @@ proposed features (and known issues), and join our
 [Discord](https://discord.gg/hERDfFZCsH) to collaborate with hundreds of other
 builders.
 
+## Local Mode (this fork)
+
+This fork runs fully on your machine — no Supabase, Docker, or cloud sandboxes
+required. On top of upstream Onlook, it adds a local-first workflow:
+
+- [x] Store projects in a local **SQLite** database instead of Supabase
+- [x] Import an existing project **from a folder on disk** — no zip or upload
+- [x] Round-trip visual edits **directly to your project's files** on disk
+- [x] Start / restart your project's **dev server from the editor** (bottom-bar
+      "Restart Sandbox" button; package manager detected from the lockfile, live
+      output streamed to the terminal panel)
+
+### Run it
+
+```bash
+make start-local-sqlite   # app on http://localhost:3000, backed by SQLite
+make local-db-reset       # delete the local SQLite database (re-created on next start)
+```
+
+Then open the app, hit **Import**, and pick your project's folder. The preview
+port defaults to `8084`; change it with `NEXT_PUBLIC_LOCAL_PREVIEW_URL`. Local
+mode requires `ONLOOK_LOCAL_MODE=true` and `NEXT_PUBLIC_ONLOOK_LOCAL_MODE=true`
+(both set for you by `make start-local-sqlite`).
+
 ## What you can do with Onlook:
 
 - [x] Create Next.js app in seconds
@@ -110,7 +134,8 @@ builders.
 ## Getting Started
 
 Use our [hosted app](https://onlook.com) or
-[run locally](https://docs.onlook.com/developers/running-locally).
+[run locally](https://docs.onlook.com/developers/running-locally). In this
+fork, you can also run fully locally — see [Local Mode](#local-mode-this-fork).
 
 ### Usage
 

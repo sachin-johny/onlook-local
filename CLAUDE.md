@@ -1,6 +1,7 @@
 ## Onlook Agents Guide
 
 Actionable rules for repo agents—keep diffs minimal, safe, token‑efficient.
+Before searching for files, read .claude/repo-map.md
 
 ### Purpose & Scope
 

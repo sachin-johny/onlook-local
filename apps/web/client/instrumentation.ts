@@ -43,14 +43,23 @@ export async function register() {
   // not __dirname (which shifts in .next/server/ after build)
   const scriptPath = _path!.resolve(process.cwd(), "src/server/pty/bun-server.ts");
 
-  const child = _child_process!.spawn("bun", ["run", scriptPath], {
-    env: {
-      ...process.env,
-      PTY_PORT: String(port),
-      PTY_PROJECTS_DIR: projectsDir,
+  // Windows: `bun` is often an npm shim (bun.cmd), which Node cannot spawn
+  // directly (ENOENT, and .cmd requires a shell). Go through cmd.exe with
+  // quoted paths instead; POSIX keeps the direct argv form.
+  const isWin = process.platform === "win32";
+  const child = _child_process!.spawn(
+    isWin ? `"bun" run "${scriptPath}"` : "bun",
+    isWin ? [] : ["run", scriptPath],
+    {
+      shell: isWin,
+      env: {
+        ...process.env,
+        PTY_PORT: String(port),
+        PTY_PROJECTS_DIR: projectsDir,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
     },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  );
 
   child.stdout?.on("data", (d) => console.log("[pty]", d.toString().trim()));
   child.stderr?.on("data", (d) => console.error("[pty]", d.toString().trim()));
@@ -74,7 +83,15 @@ export async function register() {
   // Use dynamic property access to evade Turbopack's Edge Runtime static
   // analysis, which flags `process.on(...)` even though this entire function
   // returns early for non-Node.js runtimes.
-  const teardown = () => { child.kill("SIGTERM"); };
+  const teardown = () => {
+    if (isWin) {
+      // The child is a cmd.exe wrapper (shell: true) — killing it alone
+      // orphans the bun server. Kill the whole process tree instead.
+      _child_process!.spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
+    } else {
+      child.kill("SIGTERM");
+    }
+  };
   void (typeof process === "object" && process?.on?.("SIGTERM", teardown));
   void (typeof process === "object" && process?.on?.("SIGINT", teardown));
 }

@@ -56,7 +56,7 @@ export const useStartProject = () => {
 
     useEffect(() => {
         if (tabState === 'reactivated') {
-            sandbox.session.reconnect(editorEngine.projectId, user?.id);
+            sandbox.session.reconnect(user?.id);
         }
     }, [tabState, sandbox.session]);
 

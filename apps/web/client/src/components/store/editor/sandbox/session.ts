@@ -160,7 +160,7 @@ export class SessionManager {
         await api.sandbox.hibernate.mutate({ sandboxId });
     }
 
-    async reconnect(sandboxId: string, userId?: string) {
+    async reconnect(userId?: string) {
         try {
             if (!this.provider) {
                 console.error('No provider found in reconnect');
@@ -180,20 +180,20 @@ export class SessionManager {
             if (isConnected2) {
                 return;
             }
-            await this.restartProvider(sandboxId, userId);
+            await this.restartProvider(userId);
         } catch (error) {
             console.error('Failed to reconnect to sandbox', error);
             this.isConnecting = false;
         }
     }
 
-    async restartProvider(sandboxId: string, userId?: string) {
+    async restartProvider(userId?: string) {
         if (!this.provider) {
             return;
         }
         await this.provider.destroy();
         this.provider = null;
-        await this.start(sandboxId, userId);
+        await this.start(this.branch.sandbox.id, userId);
     }
 
     async ping() {

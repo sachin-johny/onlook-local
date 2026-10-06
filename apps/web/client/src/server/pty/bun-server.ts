@@ -1,5 +1,6 @@
 import { spawn } from "@zenyr/bun-pty";
-import { resolve, join } from "node:path";
+import { Database } from "bun:sqlite";
+import { resolve, join, isAbsolute, sep } from "node:path";
 import { tmpdir } from "node:os";
 import {
   writeFileSync,
@@ -12,6 +13,13 @@ import {
 const PORT = Number(process.env.PTY_PORT ?? 3210);
 const PROJECTS_DIR = resolve(
   process.env.PTY_PROJECTS_DIR ?? "./local-projects",
+);
+/** Same DB the Next.js server uses (see packages/db sqlite-client getSqlitePath). */
+const LOCAL_DB_PATH = resolve(
+  (process.env.ONLOOK_LOCAL_DB_PATH ?? "file:./onlook-local.db").replace(
+    /^file:/,
+    "",
+  ),
 );
 
 /** Custom close codes for better client-side handling */
@@ -82,7 +90,56 @@ const sandboxIndex = new Map<string, Set<string>>();
 
 function isPathSafe(cwd: string): boolean {
   const resolved = resolve(cwd);
-  return resolved === PROJECTS_DIR || resolved.startsWith(PROJECTS_DIR + "/");
+  return resolved === PROJECTS_DIR || resolved.startsWith(PROJECTS_DIR + sep);
+}
+
+/**
+ * Look up a DB-bound sandbox root (local_sandboxes.local_path) — this is how
+ * imported projects register their real disk folder, which can live anywhere
+ * on the machine. Read-only query; the binding table may not exist yet, and
+ * bindings change at runtime, so open fresh per lookup.
+ */
+function queryBoundRoot(sandboxId: string): string | null {
+  try {
+    const db = new Database(LOCAL_DB_PATH, { readonly: true });
+    try {
+      const row = db
+        .query<{ local_path: string }, [string]>(
+          "SELECT local_path FROM local_sandboxes WHERE sandbox_id = ?",
+        )
+        .get(sandboxId);
+      if (!row?.local_path) return null;
+
+      const root = resolve(row.local_path);
+      if (!isAbsolute(root)) return null;
+      if (!existsSync(root) || !statSync(root).isDirectory()) return null;
+      return root;
+    } finally {
+      db.close();
+    }
+  } catch (err) {
+    // Missing DB file or table — the binding layer simply isn't there yet.
+    console.warn(`[pty] no DB binding lookup for ${sandboxId}:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+/**
+ * Resolve a sandboxId to its working directory:
+ * 1. DB binding (imported folders — arbitrary absolute paths)
+ * 2. Path convention (scaffolded projects under PROJECTS_DIR)
+ * Returns null when neither yields a valid directory.
+ */
+function resolveSandboxRoot(sandboxId: string): string | null {
+  const bound = queryBoundRoot(sandboxId);
+  if (bound) return bound;
+
+  const conventional = join(PROJECTS_DIR, sandboxId);
+  if (!isPathSafe(conventional)) return null;
+  if (!existsSync(conventional) || !statSync(conventional).isDirectory()) {
+    return null;
+  }
+  return conventional;
 }
 
 // ─── Shell RC setup (unchanged) ───────────────────────────────────────
@@ -145,8 +202,11 @@ function spawnPty(
   cwd: string,
   ws: any,
 ): SessionMeta {
-  const shell = process.env.SHELL ?? "/bin/zsh";
-  const shellBase = shell.split("/").pop() ?? "zsh";
+  const shell =
+    process.platform === "win32"
+      ? process.env.ONLOOK_PTY_SHELL ?? "powershell.exe"
+      : (process.env.SHELL ?? "/bin/zsh");
+  const shellBase = shell.split(/[\\/]/).pop() ?? "zsh";
 
   let args: string[] = [];
   let extraEnv: Record<string, string> = {
@@ -155,7 +215,13 @@ function spawnPty(
     CDPATH: "",
   };
 
-  if (shellBase === "bash") {
+  if (process.platform === "win32") {
+    // Windows: ConPTY (via @zenyr/bun-pty) spawns PowerShell directly —
+    // no POSIX rc plumbing. Note bun-pty ignores opts.env entirely (its FFI
+    // spawn takes only cmdline/cwd/cols/rows), so the child inherits this
+    // process's environment; instrumentation seeds it from the Next server.
+    args = [];
+  } else if (shellBase === "bash") {
     const bashRcPath = join(SHELL_RC_DIR, "bashrc");
     writeFileSync(bashRcPath, `source "${SHELL_RC_PATH}"\n`, {
       mode: 0o644,
@@ -418,17 +484,15 @@ const server = Bun.serve({
       return Response.json(result);
     }
 
-    // Client sends sandboxId — resolve to absolute cwd within projects dir
+    // Client sends sandboxId — resolve to an absolute cwd: a DB-bound
+    // imported folder first, else the PROJECTS_DIR path convention.
     const sandboxId = url.searchParams.get("sandboxId");
     if (!sandboxId) {
       return new Response("Missing sandboxId parameter", { status: 400 });
     }
 
-    const cwd = join(PROJECTS_DIR, sandboxId);
-    if (!isPathSafe(cwd)) {
-      return new Response("Forbidden", { status: 403 });
-    }
-    if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
+    const cwd = resolveSandboxRoot(sandboxId);
+    if (!cwd) {
       return new Response("Sandbox directory not found", { status: 404 });
     }
 

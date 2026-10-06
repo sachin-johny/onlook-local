@@ -28,6 +28,10 @@ export class BranchManager {
         makeAutoObservable(this);
     }
 
+    get isInitialized(): boolean {
+        return this.branchMap.size > 0;
+    }
+
     async initBranches(branches: Branch[]): Promise<void> {
         this.reactionDisposer?.();
         this.reactionDisposer = null;

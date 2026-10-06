@@ -5,6 +5,13 @@ import { EditorMode, InsertMode } from '@onlook/models';
 import type { ReactNode } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 
+/** Check if the browser focus is inside an xterm.js terminal. */
+function isTerminalFocused(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    return el.closest('.xterm') != null;
+}
+
 export const HotkeysArea = ({ children }: { children: ReactNode }) => {
     const editorEngine = useEditorEngine();
 
@@ -63,7 +70,10 @@ export const HotkeysArea = ({ children }: { children: ReactNode }) => {
     useHotkeys(Hotkey.REDO.command, () => editorEngine.action.redo(), {
         preventDefault: true,
     });
-    useHotkeys(Hotkey.ENTER.command, () => editorEngine.text.editSelectedElement(), { preventDefault: true });
+    useHotkeys(Hotkey.ENTER.command, () => editorEngine.text.editSelectedElement(), {
+        preventDefault: true,
+        enabled: !isTerminalFocused(),
+    });
     useHotkeys([Hotkey.BACKSPACE.command, Hotkey.DELETE.command], () => {
         if (editorEngine.elements.selected.length > 0) {
             editorEngine.elements.delete();
@@ -71,7 +81,7 @@ export const HotkeysArea = ({ children }: { children: ReactNode }) => {
         else if (editorEngine.frames.selected.length > 0 && editorEngine.frames.canDelete()) {
             editorEngine.frames.deleteSelected();
         }
-    }, { preventDefault: true });
+    }, { preventDefault: true, enabled: !isTerminalFocused() });
 
     // Group
     useHotkeys(Hotkey.GROUP.command, () => editorEngine.group.groupSelectedElements());

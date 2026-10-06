@@ -1,6 +1,43 @@
 import type { PreviewImg, Project } from '@onlook/models';
 import type { Project as DbProject } from '../../schema';
 
+/**
+ * Normalise a date value from either PG or SQLite drivers.
+ * PG returns Date objects; SQLite with `mode: 'timestamp'` may return
+ * Invalid Date (when stored as text by PG column serialisation) or a
+ * raw string/integer.
+ */
+function safeDate(value: unknown): Date {
+    if (value instanceof Date) {
+        return isNaN(value.getTime()) ? new Date() : value;
+    }
+    if (typeof value === 'string') {
+        const d = new Date(value);
+        return isNaN(d.getTime()) ? new Date() : d;
+    }
+    if (typeof value === 'number') {
+        // Heuristic: values > ~2001-09-09 in ms are already milliseconds
+        return new Date(value > 1e12 ? value : value * 1000);
+    }
+    return new Date();
+}
+
+/**
+ * Normalise tags: PG returns string[], SQLite may return a JSON string.
+ */
+function safeTags(value: unknown): string[] {
+    if (Array.isArray(value)) return value.filter((t): t is string => typeof t === 'string');
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === 'string') : [];
+        } catch {
+            return [];
+        }
+    }
+    return [];
+}
+
 export const fromDbProject = (
     dbProject: DbProject,
 ): Project => {
@@ -8,11 +45,11 @@ export const fromDbProject = (
         id: dbProject.id,
         name: dbProject.name,
         metadata: {
-            createdAt: dbProject.createdAt,
-            updatedAt: dbProject.updatedAt,
+            createdAt: safeDate(dbProject.createdAt),
+            updatedAt: safeDate(dbProject.updatedAt),
             previewImg: fromDbPreviewImg(dbProject),
             description: dbProject.description,
-            tags: dbProject.tags ?? [],
+            tags: safeTags(dbProject.tags),
         },
     };
 };

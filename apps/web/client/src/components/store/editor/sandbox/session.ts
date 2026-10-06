@@ -6,6 +6,7 @@ import type { Branch } from '@onlook/models';
 import { makeAutoObservable } from 'mobx';
 import type { ErrorManager } from '../error';
 import { CLISessionImpl, CLISessionType, type CLISession, type TerminalSession } from './terminal';
+import { LocalPtyTerminal } from '@/services/local-pty-terminal';
 
 export class SessionManager {
     provider: Provider | null = null;
@@ -58,7 +59,7 @@ export class SessionManager {
                 });
             }
             this.provider = provider;
-            await this.createTerminalSessions(provider);
+            await this.createTerminalSessions(provider, sandboxId);
         };
 
         let lastError: Error | null = null;
@@ -114,7 +115,16 @@ export class SessionManager {
         return this.terminalSessions.get(id) as TerminalSession | undefined;
     }
 
-    async createTerminalSessions(provider: Provider) {
+    async createTerminalSessions(provider: Provider, sandboxId?: string) {
+        // Clear any existing sessions to avoid duplicates on reconnect
+        this.terminalSessions.forEach((s) => {
+            if (s.type === CLISessionType.TERMINAL) {
+                s.terminal?.kill();
+                s.xterm?.dispose();
+            }
+        });
+        this.terminalSessions.clear();
+
         const task = new CLISessionImpl(
             'server',
             CLISessionType.TASK,
@@ -122,11 +132,18 @@ export class SessionManager {
             this.errorManager,
         );
         this.terminalSessions.set(task.id, task);
+
+        // In local mode, use LocalPtyTerminal instead of the NodeFs stub
+        const terminalOverride = isLocalModeEnabled() && sandboxId
+            ? new LocalPtyTerminal(sandboxId)
+            : undefined;
+
         const terminal = new CLISessionImpl(
             'terminal',
             CLISessionType.TERMINAL,
             provider,
             this.errorManager,
+            terminalOverride,
         );
 
         this.terminalSessions.set(terminal.id, terminal);
@@ -162,6 +179,13 @@ export class SessionManager {
 
     async reconnect(userId?: string) {
         try {
+            // In local mode, the PTY WebSocket has its own reconnection logic
+            // and the filesystem provider doesn't need restarting. Skip the
+            // expensive reconnect flow that would kill terminal sessions.
+            if (isLocalModeEnabled()) {
+                return;
+            }
+
             if (!this.provider) {
                 console.error('No provider found in reconnect');
                 return;

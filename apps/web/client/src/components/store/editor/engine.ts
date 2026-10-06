@@ -97,7 +97,10 @@ export class EditorEngine {
         this.action.clear();
         this.overlay.clear();
         this.ast.clear();
-        this.text.clean();
+        // Branch-dependent cleanups — skip if branches not yet initialised
+        if (this.branches.isInitialized) {
+            this.text.clean();
+        }
         this.insert.clear();
         this.move.clear();
         this.style.clear();

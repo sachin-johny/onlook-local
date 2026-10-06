@@ -15,7 +15,6 @@ function patchDefaults(obj: Record<string, any>, id: string, now: Date): Record<
         startedAt: obj.startedAt ?? now,
         endedAt: obj.endedAt ?? now,
         timestamp: obj.timestamp ?? now,
-        // type: obj.type ?? 'root',
         ...obj,
     };
 }
@@ -400,11 +399,18 @@ const CREATE_TABLES_SQL = `
 /**
  * Initialize the SQLite database: create tables and seed the local dev user.
  * Safe to call multiple times — uses CREATE TABLE IF NOT EXISTS.
+ * Uses a shared promise so concurrent callers coalesce into one init.
  */
+let initPromise: Promise<void> | undefined;
+
 export async function initSqliteDb(): Promise<void> {
     if (globalForDb.sqliteInitialized) return;
+    if (initPromise) return initPromise;
 
-    const sqlite = getSqlite();
+    initPromise = (async () => {
+        if (globalForDb.sqliteInitialized) return;
+
+        const sqlite = getSqlite();
 
     // libsql executes batch statements sequentially
     const statements = CREATE_TABLES_SQL
@@ -439,8 +445,11 @@ export async function initSqliteDb(): Promise<void> {
         })
         .onConflictDoNothing();
 
-    console.log(`[SQLite] Initialized local DB at ${getSqlitePath()}`);
-    globalForDb.sqliteInitialized = true;
+        console.log(`[SQLite] Initialized local DB at ${getSqlitePath()}`);
+        globalForDb.sqliteInitialized = true;
+    })();
+
+    return initPromise;
 }
 
 export type SqliteDb = ReturnType<typeof getDb>;

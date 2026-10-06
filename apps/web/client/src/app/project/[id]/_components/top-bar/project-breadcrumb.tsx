@@ -1,6 +1,7 @@
 import { useEditorEngine } from '@/components/store/editor';
 import { useStateManager } from '@/components/store/state';
 import { transKeys } from '@/i18n/keys';
+import { useCreateBlankProject } from '@/hooks/use-create-blank-project';
 import { api } from '@/trpc/react';
 import { ProductType } from '@onlook/stripe';
 import { Badge } from '@onlook/ui/badge';
@@ -17,10 +18,12 @@ import { toast } from '@onlook/ui/sonner';
 import { cn } from '@onlook/ui/utils';
 import { observer } from 'mobx-react-lite';
 import { useTranslations } from 'next-intl';
-import { redirect } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { usePostHog } from 'posthog-js/react';
 import { useRef, useState } from 'react';
 import { CloneProjectDialog } from '../clone-project-dialog';
+import { CreateProjectDialog } from '../../../../projects/_components/create-project-dialog';
+import { CreatingProjectOverlay } from '../../../../projects/_components/creating-project-overlay';
 import { NewProjectMenu } from './new-project-menu';
 import { RecentProjectsMenu } from './recent-projects';
 
@@ -28,6 +31,8 @@ export const ProjectBreadcrumb = observer(() => {
     const editorEngine = useEditorEngine();
     const stateManager = useStateManager();
     const posthog = usePostHog();
+    const router = useRouter();
+    const { handleStartBlankProject, isCreatingProject, isNameDialogOpen, setIsNameDialogOpen } = useCreateBlankProject();
     const { data: project } = api.project.get.useQuery({ projectId: editorEngine.projectId });
     const { data: subscription } = api.subscription.get.useQuery();
     const isPro = subscription?.product.type === ProductType.PRO;
@@ -38,17 +43,16 @@ export const ProjectBreadcrumb = observer(() => {
     const [isDownloading, setIsDownloading] = useState(false);
     const [showCloneDialog, setShowCloneDialog] = useState(false);
 
-    async function handleNavigateToProjects(_route?: 'create' | 'import') {
+    function handleNavigateToProjects(_route?: 'create' | 'import') {
         try {
             setIsClosingProject(true);
-
             editorEngine.screenshot.captureScreenshot();
         } catch (error) {
             console.error('Failed to take screenshots:', error);
         } finally {
             setTimeout(() => {
                 setIsClosingProject(false);
-                redirect('/projects');
+                router.push('/projects');
             }, 100);
         }
     }
@@ -176,6 +180,12 @@ export const ProjectBreadcrumb = observer(() => {
                 onClose={() => setShowCloneDialog(false)}
                 projectName={project?.name}
             />
+            <CreateProjectDialog
+                open={isNameDialogOpen}
+                onClose={() => setIsNameDialogOpen(false)}
+                onSubmit={handleStartBlankProject}
+            />
+            <CreatingProjectOverlay isVisible={isCreatingProject} />
         </div>
     );
 });

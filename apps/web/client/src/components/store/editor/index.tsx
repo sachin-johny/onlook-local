@@ -37,13 +37,9 @@ export const EditorEngineProvider = ({
 
     // Initialize editor engine when project ID changes
     useEffect(() => {
+        const prevEngine = engineRef.current;
         const initializeEngine = async () => {
             if (currentProjectId.current !== project.id) {
-                // Clean up old engine with delay to avoid race conditions
-                if (engineRef.current) {
-                    setTimeout(() => engineRef.current?.clear(), 0);
-                }
-
                 // Create new engine for new project
                 const newEngine = new EditorEngine(project.id, posthog);
                 await newEngine.initBranches(branches);
@@ -53,16 +49,24 @@ export const EditorEngineProvider = ({
                 engineRef.current = newEngine;
                 setEditorEngine(newEngine);
                 currentProjectId.current = project.id;
+
+                // Clean up old engine AFTER updating the ref,
+                // using the captured reference (not engineRef.current).
+                if (prevEngine) {
+                    prevEngine.clear();
+                }
             }
         };
 
         initializeEngine();
     }, [project.id]);
 
-    // Cleanup on unmount
+    // Cleanup on unmount — capture engine at registration time
+    // so we clear the correct instance, not whatever engineRef points to later.
     useEffect(() => {
+        const engine = engineRef.current;
         return () => {
-            setTimeout(() => engineRef.current?.clear(), 0);
+            engine?.clear();
         };
     }, []);
 

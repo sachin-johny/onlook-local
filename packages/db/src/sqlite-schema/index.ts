@@ -44,8 +44,10 @@ export const projects = sqliteTable('projects', {
     updatedPreviewImgAt: integer('updated_preview_img_at', { mode: 'timestamp' }),
     sandboxId: text('sandbox_id'),
     sandboxUrl: text('sandbox_url'),
-    createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+    // No mode:'timestamp' — PG table inserts store ISO strings via Drizzle PG
+    // serialisation; safeDate() in the mapper handles both strings and integers.
+    createdAt: integer('created_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+    updatedAt: integer('updated_at').notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
 });
 
 // ─── Branches ────────────────────────────────────────────────────────

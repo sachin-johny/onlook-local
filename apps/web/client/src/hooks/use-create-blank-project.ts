@@ -16,7 +16,7 @@ const withTimeout = async <T,>(
     timeoutMessage: string,
 ): Promise<T> => {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    
+
     const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
     });
@@ -37,7 +37,7 @@ export function useCreateBlankProject() {
     const router = useRouter();
     const [isCreatingProject, setIsCreatingProject] = useState(false);
 
-    // ← NEW: name dialog state
+    // Name dialog state
     const [isNameDialogOpen, setIsNameDialogOpen] = useState(false);
 
     const openNameDialog = () => {
@@ -106,7 +106,7 @@ export function useCreateBlankProject() {
                     description: errorMessage,
                 });
             }
-        } 
+        }
         // finally {
         //     setIsCreatingProject(false);
         // }

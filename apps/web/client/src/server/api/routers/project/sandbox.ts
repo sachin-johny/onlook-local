@@ -1,5 +1,6 @@
 import { TRPCError } from '@trpc/server';
 import { randomUUID } from 'node:crypto';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 
 import {
@@ -12,6 +13,7 @@ import { shortenUuid } from '@onlook/utility/src/id';
 
 import { createTRPCRouter, protectedProcedure } from '../../trpc';
 import { bindLocalSandbox, createServerNodeFsTransport } from '../../services/local-fs';
+import { getLocalProjectsDir, scaffoldProject, cleanupProject } from '../../../scaffold';
 
 function isLocalModeEnabled() {
     return (
@@ -76,7 +78,21 @@ export const sandboxRouter = createTRPCRouter({
         )
         .mutation(async ({ input, ctx }) => {
             if (isLocalModeEnabled()) {
-                return createLocalSandbox(3000);
+                const { sandboxId, previewUrl } = createLocalSandbox(3000);
+                const projectDir = resolve(join(getLocalProjectsDir(), sandboxId));
+
+                try {
+                    await scaffoldProject(projectDir, input.title || 'my-app');
+                } catch (err) {
+                    await cleanupProject(projectDir).catch(() => {});
+                    throw new TRPCError({
+                        code: 'INTERNAL_SERVER_ERROR',
+                        message: `Failed to scaffold local project: ${err instanceof Error ? err.message : String(err)}`,
+                    });
+                }
+
+                await bindLocalSandbox(sandboxId, projectDir, input.title);
+                return { sandboxId, previewUrl };
             }
 
             // Create a new sandbox using the static provider
@@ -210,12 +226,31 @@ export const sandboxRouter = createTRPCRouter({
         )
         .mutation(async ({ input }) => {
             if (isLocalModeEnabled()) {
-                const localSandbox = createLocalSandbox(input.sandbox.port);
+                const { sandboxId, previewUrl } = createLocalSandbox(input.sandbox.port);
+
                 if (input.localPath) {
-                    // Link the new sandbox to the real disk folder (local import path).
-                    await bindLocalSandbox(localSandbox.sandboxId, input.localPath, input.config?.title);
+                    // Import flow: link the sandbox to the user's existing disk folder.
+                    await bindLocalSandbox(sandboxId, input.localPath, input.config?.title);
+                } else {
+                    // New project flow: scaffold template files into the managed
+                    // projects dir, then bind so the disk transport (and terminal)
+                    // resolve this sandbox like any imported one.
+                    const projectDir = resolve(join(getLocalProjectsDir(), sandboxId));
+
+                    try {
+                        await scaffoldProject(projectDir, input.config?.title || 'my-app');
+                    } catch (err) {
+                        await cleanupProject(projectDir).catch(() => {});
+                        throw new TRPCError({
+                            code: 'INTERNAL_SERVER_ERROR',
+                            message: `Failed to scaffold local project: ${err instanceof Error ? err.message : String(err)}`,
+                        });
+                    }
+
+                    await bindLocalSandbox(sandboxId, projectDir, input.config?.title);
                 }
-                return localSandbox;
+
+                return { sandboxId, previewUrl };
             }
 
             const MAX_RETRY_ATTEMPTS = 3;
@@ -284,7 +319,21 @@ export const sandboxRouter = createTRPCRouter({
         )
         .mutation(async ({ input }) => {
             if (isLocalModeEnabled()) {
-                return createLocalSandbox(3000);
+                const { sandboxId, previewUrl } = createLocalSandbox(3000);
+                const projectDir = resolve(join(getLocalProjectsDir(), sandboxId));
+
+                try {
+                    await scaffoldProject(projectDir, 'my-app');
+                } catch (err) {
+                    await cleanupProject(projectDir).catch(() => {});
+                    throw new TRPCError({
+                        code: 'INTERNAL_SERVER_ERROR',
+                        message: `Failed to scaffold local project: ${err instanceof Error ? err.message : String(err)}`,
+                    });
+                }
+
+                await bindLocalSandbox(sandboxId, projectDir);
+                return { sandboxId, previewUrl };
             }
 
             const MAX_RETRY_ATTEMPTS = 3;
